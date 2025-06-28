@@ -1,0 +1,215 @@
+/* css/style.css */
+
+/* ==========================================================================
+   GLOBAL
+   ========================================================================== */
+
+/* body padding for fixed header */
+body {
+    padding-top: 64px;
+}
+
+/* ==========================================================================
+     HEADER
+     ========================================================================== */
+
+.navbar {
+    background: rgba(255, 255, 255, 0.7);
+    backdrop-filter: blur(10px);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+    padding: 0.5rem 0;
+    z-index: 1000;
+}
+
+.navbar-brand img {
+    display: inline-block;
+}
+
+.nav-link {
+    color: #333 !important;
+    margin: 0 1rem;
+    font-weight: 500;
+}
+
+.nav-link:hover,
+.nav-item.active .nav-link {
+    color: #1eaaf1 !important;
+}
+
+/* ==========================================================================
+     HERO SECTION
+     ========================================================================== */
+
+.hero-section {
+    background: url('../images/hero-bg.jpg') center center / cover no-repeat;
+    width: 100%;
+    min-height: calc(100vh - 64px);
+    position: relative;
+    display: flex;
+    align-items: center;
+    padding: 4rem 0;
+}
+
+.hero-section::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: rgba(255, 255, 255, 0.6);
+    z-index: 1;
+}
+
+.hero-section .container {
+    position: relative;
+    z-index: 2;
+}
+
+.hero-form-card {
+    background: #fff;
+    border-radius: 1rem;
+    padding: 2rem;
+    border: none;
+}
+
+.input-hero {
+    border-radius: 2rem;
+    background: #d0f0ff;
+    border: none;
+    padding: 1rem 1.5rem;
+    font-size: 1rem;
+    min-height: 3.5rem;
+}
+
+select.input-hero {
+    appearance: none;
+    background-image: url("data:image/svg+xml;charset=US-ASCII,%3csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' fill='%23333'%3e%3cpath d='M4 6l4 4 4-4z'/%3e%3c/svg%3e");
+    background-repeat: no-repeat;
+    background-position: right 1rem center;
+}
+
+.btn-primary-hero {
+    background-color: #1eaaf1;
+    border: none;
+    border-radius: 2rem;
+    color: #fff;
+    padding: 0.75rem 2.5rem;
+    font-weight: bold;
+    font-size: 1.1rem;
+}
+
+.hero-text-box {
+    background: rgba(255, 255, 255, 0.8);
+    padding: 2rem;
+    border-radius: 0.75rem;
+    max-width: 480px;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.1);
+}
+
+.hero-text-box h1 {
+    margin: 0;
+    color: #1eaaf1;
+    line-height: 1.2;
+}
+
+@media (max-width: 767px) {
+    .hero-section {
+        padding: 2rem 0;
+        min-height: auto;
+    }
+
+    .hero-text-box {
+        max-width: 100%;
+        text-align: center;
+    }
+}
+
+/* ==========================================================================
+     PROFILE PAGE
+     ========================================================================== */
+
+.profile-wrapper {
+    max-width: 900px;
+    margin: auto;
+}
+
+.profile-title {
+    font-size: 2.25rem;
+    color: #1eaaf1;
+    font-weight: 700;
+    text-align: center;
+    margin-bottom: 1.5rem;
+}
+
+.profile-card {
+    border: none;
+    border-radius: 0.75rem;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+    background: #ffffff;
+    padding: 2rem;
+    margin-bottom: 2rem;
+}
+
+.profile-card .form-row {
+    margin-bottom: 1rem;
+}
+
+.profile-card .form-control {
+    border-radius: 0.5rem;
+    min-height: 2.75rem;
+}
+
+.btn-save {
+    background-color: #1eaaf1;
+    border: none;
+    color: #fff;
+    padding: 0.5rem 1.5rem;
+    border-radius: 0.5rem;
+    font-size: 1rem;
+}
+
+/* ==========================================================================
+     ÄRZTE LISTE
+     ========================================================================== */
+
+.doctor-list-card {
+    background: rgba(30, 170, 241, 0.05);
+    border-radius: 1rem;
+    padding: 2rem;
+    margin-bottom: 2rem;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+}
+
+.doctor-list-title {
+    color: #1eaaf1;
+    margin-bottom: 1rem;
+    font-weight: 600;
+    font-size: 1.5rem;
+}
+
+.doctor-card {
+    background: #ffffff;
+    border: 1px solid rgba(30, 170, 241, 0.2);
+    border-radius: 0.5rem;
+    box-shadow: 0 4px 12px rgba(30, 170, 241, 0.1);
+    padding: 1rem;
+    position: relative;
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.doctor-card:hover {
+    transform: translateY(-4px);
+    box-shadow: 0 8px 20px rgba(30, 170, 241, 0.2);
+}
+
+.edit-buttons {
+    position: absolute;
+    top: 0.75rem;
+    right: 0.75rem;
+}
+
+.inline-input {
+    display: inline-block;
+    width: auto;
+    margin-left: 0.5rem;
+    border-radius: 0.5rem;
+    padding: 0.25rem 0.5rem;
+}
