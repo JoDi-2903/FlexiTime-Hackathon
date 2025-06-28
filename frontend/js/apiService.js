@@ -1,6 +1,6 @@
 // apiService.js
 angular.module('appointmentApp').factory('ApiService', ['$http', function($http) {
-  const baseUrl = 'http://34.217.126.24/';
+  const baseUrl = 'http://34.217.126.24:80/';
 
   return {
     // TASKS

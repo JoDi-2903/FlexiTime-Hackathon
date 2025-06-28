@@ -15,18 +15,21 @@
     // ===== ApiService: Kommunikation mit Backend =====
     ApiService.$inject = ['$http'];
     function ApiService($http) {
-        const baseUrl = 'http://34.217.126.24/';
 
 
         return {
             // USER
             updateUserProfile: (user) => $http.put(baseUrl + 'update_profile', {
-                user_id: user.id || 'demo-user-id',
+                user_id: '123e4567-e89b-12d3-a456-426614174000',
                 first_name: user.vorname,
                 surname: user.nachname,
                 birth_date: user.geburtsdatum,
                 insurance: user.versicherung
             }),
+
+            
+           getUserDetails: (userId) => $http.get(baseUrl + 'get_user_details/' + userId),
+//'123e4567-e89b-12d3-a456-426614174000'
 
             // DOCTOR
             listDoctors: () => $http.get(baseUrl + 'list_all_doctors'),
@@ -43,8 +46,22 @@
                 opening_hours: doc.oeffnungszeiten,
                 profession: doc.fachrichtung
             }),
-            deleteDoctor: (id) => $http.delete(baseUrl + 'delete_doctor/' + id)
-        };
+            deleteDoctor: (id) => $http.delete(baseUrl + 'delete_doctor/' + id),
+         // TASKS
+        scheduleCallTask: (task) => $http.post(baseUrl + 'schedule_call_task', {
+            user_id: task.user_id,
+            doctor_id: task.doctor_id,
+            appointment_reason: task.terminGrund,
+            additional_remark: task.bemerkung,
+            date: task.datum,
+            time_range_start: task.von,
+            time_range_end: task.bis
+        }),
+
+        getTaskResults: () => $http.get(baseUrl + 'get_task_results'),
+
+        getTaskCallProtocol: (taskId) => $http.get(baseUrl + 'get_task_call_protocol/' + taskId)
+    };
     }
 
     // ===== Routing =====
@@ -84,63 +101,81 @@
     }
 
     // ===== HomeController =====
-    HomeController.$inject = ['$scope', 'ApiService'];
-    function HomeController($scope, ApiService) {
-        $scope.aerzte = [];
-        $scope.gruende = [
-            'Allgemeinkontrolle',
-            'Akute Beschwerden',
-            'Beratung',
-            'Sonstiges (Zusatzbemerkung)'
-        ];
+    // ===== HomeController =====
+HomeController.$inject = ['$scope', 'ApiService'];
 
-        $scope.appointment = {
-            arzt: null,
-            grund: '',
-            zusatz: '',
-            datum: '',
-            von: '',
-            bis: ''
+function HomeController($scope, ApiService) {
+    $scope.aerzte = [];
+    $scope.gruende = [
+        'Allgemeinkontrolle',
+        'Akute Beschwerden',
+        'Beratung',
+        'Sonstiges (Zusatzbemerkung)'
+    ];
+
+    // Initialisiertes Formularobjekt
+    $scope.appointment = {
+        arzt: null,
+        grund: '',
+        zusatz: '',
+        datum: '',
+        von: '',
+        bis: ''
+    };
+
+    // Lade verfügbare Ärzte beim Start
+    ApiService.listDoctors().then(res => {
+        $scope.aerzte = res.data.doctors.map(doc => ({
+            doctor_id: doc.doctor_id,
+            name: doc.name
+        }));
+    }).catch(err => {
+        console.error('Fehler beim Laden der Ärzte:', err);
+    });
+
+    // Termin-Anfrage absenden
+    $scope.submitRequest = function () {
+        const a = $scope.appointment;
+
+        // Validierung
+        if (!a.arzt || !a.grund || !a.datum || !a.von || !a.bis) {
+            alert('Bitte alle Pflichtfelder ausfüllen.');
+            return;
+        }
+
+        // Anfrage-Daten vorbereiten
+        const payload = {
+            user_id: '123e4567-e89b-12d3-a456-426614174000',  
+            doctor_id: a.arzt.doctor_id,
+            appointment_reason: a.grund,
+            additional_remark: a.zusatz || '',
+            date: a.datum,
+            time_range_start: a.von,
+            time_range_end: a.bis
         };
 
-        // Lade Ärzte vom Backend
-        ApiService.listDoctors().then(res => {
-            $scope.aerzte = res.data.doctors.map(doc => ({
-                doctor_id: doc.doctor_id,
-                name: doc.name
-            }));
-        });
+        // Sende Task an API
+        ApiService.scheduleCallTask(payload)
+            .then(res => {
+                alert('Termin wurde erfolgreich angefragt!\nTask ID: ' + res.data.task_id);
 
-        // Anfrage senden
-        $scope.submitRequest = function () {
-            const a = $scope.appointment;
-            if (!a.arzt || !a.grund || !a.datum || !a.von || !a.bis) {
-                alert('Bitte alle Felder ausfüllen.');
-                return;
-            }
+                // Formular zurücksetzen
+                $scope.appointment = {
+                    arzt: null,
+                    grund: '',
+                    zusatz: '',
+                    datum: '',
+                    von: '',
+                    bis: ''
+                };
+            })
+            .catch(err => {
+                alert('Fehler beim Anfragen des Termins.');
+                console.error('Termin Anfrage fehlgeschlagen:', err);
+            });
+    };
+}
 
-            const payload = {
-                user_id: 'demo-user-id',  // In echten Fällen dynamisch setzen
-                doctor_id: a.arzt.doctor_id,
-                appointment_reason: a.grund,
-                additional_remark: a.zusatz || '',
-                date: a.datum,
-                time_range_start: a.von,
-                time_range_end: a.bis
-            };
-
-            ApiService.scheduleCallTask(payload)
-                .then(res => {
-                    alert('Termin wurde erfolgreich angefragt!\nTask ID: ' + res.data.task_id);
-                    // optional: Formular zurücksetzen
-                    $scope.appointment = {};
-                })
-                .catch(err => {
-                    alert('Fehler beim Anfragen des Termins.');
-                    console.error(err);
-                });
-        };
-    }
 
     KalenderController.$inject = ['$scope', '$timeout'];
     function KalenderController($scope, $timeout) {
