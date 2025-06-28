@@ -1,0 +1,51 @@
+<!-- views/protokolle.html -->
+<div class="container py-5">
+    <div class="row">
+
+        <!-- Geplante Anrufe -->
+        <div class="col-md-6 mb-4">
+            <div class="card">
+                <div class="card-body">
+                    <h3>Geplante Anrufe</h3>
+                    <ul class="list-group">
+                        <li class="list-group-item" ng-repeat="call in plannedCalls">
+                            <strong>{{call.arzt}}</strong><br>
+                            {{call.grund}}<br>
+                            <em>{{call.datetime}}</em>
+                        </li>
+                        <li class="list-group-item text-center text-muted" ng-if="plannedCalls.length===0">
+                            Keine geplanten Anrufe.
+                        </li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+
+        <!-- Erledigte Anrufe -->
+        <div class="col-md-6 mb-4">
+            <div class="card">
+                <div class="card-body">
+                    <h3>Erledigte Anrufe</h3>
+                    <ul class="list-group">
+                        <li class="list-group-item d-flex justify-content-between align-items-center"
+                            ng-repeat="call in completedCalls">
+                            <div>
+                                <strong>{{call.arzt}}</strong><br>
+                                {{call.grund}}<br>
+                                <em>{{call.datetime}}</em>
+                            </div>
+                            <span class="status-icon" ng-class="{'success': call.status==='success',
+                                 'fail':    call.status==='fail'}">
+                                {{ call.status==='success' ? '✓' : '✕' }}
+                            </span>
+                        </li>
+                        <li class="list-group-item text-center text-muted" ng-if="completedCalls.length===0">
+                            Noch keine Anrufe erfolgt.
+                        </li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+
+    </div>
+</div>

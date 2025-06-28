@@ -213,19 +213,41 @@ select.input-hero {
     border-radius: 0.5rem;
     padding: 0.25rem 0.5rem;
 }
+
 /* Entfernt Milestone, Task und All Day in der Wochenansicht */
 /* Entfernt NUR die "Milestone", "Task", "All Day" Headerzeilen */
 .toastui-calendar-timegrid-allday,
 .toastui-calendar-timegrid-task,
 .toastui-calendar-timegrid-milestone {
-  display: none !important;
-  height: 0 !important;
+    display: none !important;
+    height: 0 !important;
 }
 
 /* Entfernt die Label-Zeile (links) für diese Bereiche */
 .toastui-calendar-timegrid-left .toastui-calendar-timegrid-hour-label-allday,
 .toastui-calendar-timegrid-left .toastui-calendar-timegrid-hour-label-task,
 .toastui-calendar-timegrid-left .toastui-calendar-timegrid-hour-label-milestone {
-  display: none !important;
+    display: none !important;
 }
 
+
+/* Status‑Icons rund & farbig */
+.status-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 1.5rem;
+    height: 1.5rem;
+    border-radius: 50%;
+    font-weight: bold;
+}
+
+.status-icon.success {
+    background-color: #d4edda;
+    color: #155724;
+}
+
+.status-icon.fail {
+    background-color: #f8d7da;
+    color: #721c24;
+}

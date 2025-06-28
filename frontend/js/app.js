@@ -67,6 +67,10 @@
                 templateUrl: 'views/profil.html',
                 controller: 'ProfileController'
             })
+            .when('/protokolle', {
+                templateUrl: 'views/protokolle.html',
+                controller: 'HistoryController'
+            })
             .otherwise({ redirectTo: '/' });
     }
 
@@ -81,149 +85,149 @@
 
     // ===== HomeController =====
     HomeController.$inject = ['$scope', 'ApiService'];
-function HomeController($scope, ApiService) {
-    $scope.aerzte = [];
-    $scope.gruende = [
-        'Allgemeinkontrolle',
-        'Akute Beschwerden',
-        'Beratung',
-        'Sonstiges (Zusatzbemerkung)'
-    ];
+    function HomeController($scope, ApiService) {
+        $scope.aerzte = [];
+        $scope.gruende = [
+            'Allgemeinkontrolle',
+            'Akute Beschwerden',
+            'Beratung',
+            'Sonstiges (Zusatzbemerkung)'
+        ];
 
-    $scope.appointment = {
-        arzt: null,
-        grund: '',
-        zusatz: '',
-        datum: '',
-        von: '',
-        bis: ''
-    };
-
-    // Lade Ärzte vom Backend
-    ApiService.listDoctors().then(res => {
-        $scope.aerzte = res.data.doctors.map(doc => ({
-            doctor_id: doc.doctor_id,
-            name: doc.name
-        }));
-    });
-
-    // Anfrage senden
-    $scope.submitRequest = function () {
-        const a = $scope.appointment;
-        if (!a.arzt || !a.grund || !a.datum || !a.von || !a.bis) {
-            alert('Bitte alle Felder ausfüllen.');
-            return;
-        }
-
-        const payload = {
-            user_id: 'demo-user-id',  // In echten Fällen dynamisch setzen
-            doctor_id: a.arzt.doctor_id,
-            appointment_reason: a.grund,
-            additional_remark: a.zusatz || '',
-            date: a.datum,
-            time_range_start: a.von,
-            time_range_end: a.bis
+        $scope.appointment = {
+            arzt: null,
+            grund: '',
+            zusatz: '',
+            datum: '',
+            von: '',
+            bis: ''
         };
 
-        ApiService.scheduleCallTask(payload)
-            .then(res => {
-                alert('Termin wurde erfolgreich angefragt!\nTask ID: ' + res.data.task_id);
-                // optional: Formular zurücksetzen
-                $scope.appointment = {};
-            })
-            .catch(err => {
-                alert('Fehler beim Anfragen des Termins.');
-                console.error(err);
-            });
-    };
-}
+        // Lade Ärzte vom Backend
+        ApiService.listDoctors().then(res => {
+            $scope.aerzte = res.data.doctors.map(doc => ({
+                doctor_id: doc.doctor_id,
+                name: doc.name
+            }));
+        });
 
-KalenderController.$inject = ['$scope', '$timeout'];
-function KalenderController($scope, $timeout) {
-  $timeout(function () {
-    const calendarEl = document.getElementById('calendar');
-    const titleEl = document.getElementById('current-month');
+        // Anfrage senden
+        $scope.submitRequest = function () {
+            const a = $scope.appointment;
+            if (!a.arzt || !a.grund || !a.datum || !a.von || !a.bis) {
+                alert('Bitte alle Felder ausfüllen.');
+                return;
+            }
 
-    // TUI Calendar-Instanz erzeugen
-    const calendar = new tui.Calendar(calendarEl, {
-      defaultView: 'month',
-      usageStatistics: false,
-      taskView: false, // "Milestone" und "Task" ausblenden
-      scheduleView: ['time'], // keine All-Day-Events
-      template: {
-      milestone: null,
-    task: null,
-    allday: null
-  },
-      week: {
-        showNowIndicator: true,
-        startDayOfWeek: 1,
-        hourStart: 7,
-        hourEnd: 20
-      },
-      month: {
-        startDayOfWeek: 1,
-      },
-      timezone: {
-        zones: [{ timezoneName: 'Europe/Berlin' }]
-      }
-    });
+            const payload = {
+                user_id: 'demo-user-id',  // In echten Fällen dynamisch setzen
+                doctor_id: a.arzt.doctor_id,
+                appointment_reason: a.grund,
+                additional_remark: a.zusatz || '',
+                date: a.datum,
+                time_range_start: a.von,
+                time_range_end: a.bis
+            };
 
-    // Monatstitel aktualisieren
-    function updateTitle() {
-      const date = calendar.getDate();
-      const jsDate = new Date(date);
-      titleEl.textContent = jsDate.toLocaleDateString('de-DE', { month: 'long', year: 'numeric' });
+            ApiService.scheduleCallTask(payload)
+                .then(res => {
+                    alert('Termin wurde erfolgreich angefragt!\nTask ID: ' + res.data.task_id);
+                    // optional: Formular zurücksetzen
+                    $scope.appointment = {};
+                })
+                .catch(err => {
+                    alert('Fehler beim Anfragen des Termins.');
+                    console.error(err);
+                });
+        };
     }
 
-    // Navigationsfunktionen
-    $scope.prev = function () {
-      calendar.prev();
-      updateTitle();
-    };
-    $scope.today = function () {
-      calendar.today();
-      updateTitle();
-    };
-    $scope.next = function () {
-      calendar.next();
-      updateTitle();
-    };
-    $scope.changeView = function (view) {
-      calendar.changeView(view);
-      updateTitle();
-    };
+    KalenderController.$inject = ['$scope', '$timeout'];
+    function KalenderController($scope, $timeout) {
+        $timeout(function () {
+            const calendarEl = document.getElementById('calendar');
+            const titleEl = document.getElementById('current-month');
 
-    updateTitle();
+            // TUI Calendar-Instanz erzeugen
+            const calendar = new tui.Calendar(calendarEl, {
+                defaultView: 'month',
+                usageStatistics: false,
+                taskView: false, // "Milestone" und "Task" ausblenden
+                scheduleView: ['time'], // keine All-Day-Events
+                template: {
+                    milestone: null,
+                    task: null,
+                    allday: null
+                },
+                week: {
+                    showNowIndicator: true,
+                    startDayOfWeek: 1,
+                    hourStart: 7,
+                    hourEnd: 20
+                },
+                month: {
+                    startDayOfWeek: 1,
+                },
+                timezone: {
+                    zones: [{ timezoneName: 'Europe/Berlin' }]
+                }
+            });
 
-    // ==== Google Kalender einbinden ====
-    const apiKey = 'AIzaSyAdZs_4_3mUrdol6taNzBYy5DzLVZ2FppI';
-    const calendarId = '855053bc706bfbe7a7f5c799745fa242954a7c0a884f1b81b475991e086e73cc@group.calendar.google.com';
+            // Monatstitel aktualisieren
+            function updateTitle() {
+                const date = calendar.getDate();
+                const jsDate = new Date(date);
+                titleEl.textContent = jsDate.toLocaleDateString('de-DE', { month: 'long', year: 'numeric' });
+            }
 
-    gapi.load('client', () => {
-      gapi.client.init({ apiKey }).then(() => {
-        return gapi.client.request({
-          path: `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calendarId)}/events`
-        });
-      }).then(res => {
-        const events = res.result.items || [];
-        const schedules = events
-          .filter(e => e.start && e.start.dateTime)
-          .map(e => ({
-            id: e.id,
-            calendarId: 'google',
-            title: e.summary || 'Kein Titel',
-            category: 'time',
-            start: e.start.dateTime,
-            end: e.end.dateTime
-          }));
-        calendar.createEvents(schedules); 
-      }).catch(err => {
-        console.error('Fehler beim Laden der Google-Termine:', err);
-      });
-    });
-  }, 0);
-}
+            // Navigationsfunktionen
+            $scope.prev = function () {
+                calendar.prev();
+                updateTitle();
+            };
+            $scope.today = function () {
+                calendar.today();
+                updateTitle();
+            };
+            $scope.next = function () {
+                calendar.next();
+                updateTitle();
+            };
+            $scope.changeView = function (view) {
+                calendar.changeView(view);
+                updateTitle();
+            };
+
+            updateTitle();
+
+            // ==== Google Kalender einbinden ====
+            const apiKey = 'AIzaSyAdZs_4_3mUrdol6taNzBYy5DzLVZ2FppI';
+            const calendarId = '855053bc706bfbe7a7f5c799745fa242954a7c0a884f1b81b475991e086e73cc@group.calendar.google.com';
+
+            gapi.load('client', () => {
+                gapi.client.init({ apiKey }).then(() => {
+                    return gapi.client.request({
+                        path: `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calendarId)}/events`
+                    });
+                }).then(res => {
+                    const events = res.result.items || [];
+                    const schedules = events
+                        .filter(e => e.start && e.start.dateTime)
+                        .map(e => ({
+                            id: e.id,
+                            calendarId: 'google',
+                            title: e.summary || 'Kein Titel',
+                            category: 'time',
+                            start: e.start.dateTime,
+                            end: e.end.dateTime
+                        }));
+                    calendar.createEvents(schedules);
+                }).catch(err => {
+                    console.error('Fehler beim Laden der Google-Termine:', err);
+                });
+            });
+        }, 0);
+    }
 
 
     // ===== ProtokolleController =====
