@@ -372,9 +372,19 @@ def root():
                 "api_name": "Medical Appointment Scheduling API",
                 "version": "1.0.0",
                 "endpoints": {
+                    # Task specific endpoints
                     "POST /schedule_call_task": "Schedule a new call task for appointment booking",
                     "GET /get_task_results": "Get list of all task results",
                     "GET /get_task_call_protocol/<task_id>": "Get call protocol for specific task",
+                    
+                    # Doctor and user management endpoints
+                    "PUT /update_profile": "Update user profile information",
+                    "POST /add_doctor": "Add a new doctor to the system",
+                    "PUT /update_doctor": "Update an existing doctor's information",
+                    "DELETE /delete_doctor/<doctor_id>": "Delete a doctor from the system",
+                    "GET /list_all_doctors": "Get a list of all doctors in the system",
+                    
+                    # Health check endpoint
                     "GET /health": "Health check endpoint",
                 },
             }
