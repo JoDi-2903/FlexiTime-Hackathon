@@ -2,16 +2,27 @@ import uuid
 from datetime import datetime, timedelta
 from typing import Dict, List, Optional
 
+import psycopg2
 from flask import Flask, jsonify, request
+from flask_cors import CORS
+from psycopg2.extras import RealDictCursor
 
 app = Flask(__name__)
+CORS(app)
 
-# In-memory storage
-# TODO: Move to database when connection to it is established
-tasks: Dict[str, Dict] = {}
-call_protocols: Dict[str, List[Dict]] = {}
-users: Dict[str, Dict] = {}
-doctors: Dict[str, Dict] = {}
+
+# Database connection function
+def get_db_connection():
+    conn = psycopg2.connect(
+        host="terminagent-db.cty0uqagcewj.us-west-2.rds.amazonaws.com",
+        port=5432,
+        dbname="postgres",
+        user="postgres",
+        password="2WiIo5_g2-c+",
+        # Note: Credentials should be stored securely in environment variables for a production system
+    )
+    conn.autocommit = True
+    return conn
 
 
 # TASK SPECIFIC ENDPOINTS
@@ -58,24 +69,35 @@ def schedule_call_task():
         # Generate unique task ID
         task_id = str(uuid.uuid4())
 
-        # Create task entry
-        task = {
-            "task_id": task_id,
-            "user_id": data["user_id"],
-            "doctor_id": data["doctor_id"],
-            "appointment_reason": data["appointment_reason"],
-            "additional_remark": data["additional_remark"],
-            "date": data["date"],
-            "time_range_start": data["time_range_start"],
-            "time_range_end": data["time_range_end"],
-            "status_code": "scheduled",
-            "booked_appointment": None,
-            "created_at": datetime.now().isoformat(),
-        }
+        conn = get_db_connection()
+        cursor = conn.cursor()
 
-        # Store task
-        # TODO: Replace with database storage
-        tasks[task_id] = task
+        # Insert task into database
+        cursor.execute(
+            """
+            INSERT INTO tasks (
+                task_id, user_id, doctor_id, appointment_reason, 
+                additional_remark, appointment_date, time_range_start,
+                time_range_end, status_code, created_at
+            )
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            """,
+            (
+                task_id,
+                data["user_id"],
+                data["doctor_id"],
+                data["appointment_reason"],
+                data["additional_remark"],
+                data["date"],
+                data["time_range_start"],
+                data["time_range_end"],
+                "scheduled",
+                datetime.now(),
+            ),
+        )
+
+        cursor.close()
+        conn.close()
 
         return (
             jsonify(
@@ -102,16 +124,19 @@ def get_task_results():
     Returns: List of [task_id, status_code, booked_appointment (optional)]
     """
     try:
-        results = []
+        conn = get_db_connection()
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
 
-        # TODO: Replace with database query to fetch tasks
-        for task_id, task in tasks.items():
-            result = {
-                "task_id": task_id,
-                "status_code": task["status_code"],
-                "booked_appointment": task.get("booked_appointment"),
-            }
-            results.append(result)
+        cursor.execute(
+            """
+            SELECT task_id, status_code, booked_appointment
+            FROM tasks
+            """
+        )
+        results = cursor.fetchall()
+
+        cursor.close()
+        conn.close()
 
         return jsonify({"results": results, "total_count": len(results)}), 200
 
@@ -126,11 +151,33 @@ def get_task_call_protocol(task_id: str):
     Returns: Chat protocol of the call between AI-agent and medical assistant
     """
     try:
-        # TODO: Replace with database query to fetch call protocols
-        if task_id not in tasks:
+        conn = get_db_connection()
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
+
+        # First check if task exists
+        cursor.execute("SELECT status_code FROM tasks WHERE task_id = %s", (task_id,))
+        task = cursor.fetchone()
+
+        if not task:
+            cursor.close()
+            conn.close()
             return jsonify({"error": "Task not found", "task_id": task_id}), 404
 
-        if task_id not in call_protocols:
+        # Get call protocols for this task
+        cursor.execute(
+            """
+            SELECT * FROM call_protocols 
+            WHERE task_id = %s
+            ORDER BY timestamp ASC
+            """,
+            (task_id,),
+        )
+        protocols = cursor.fetchall()
+
+        cursor.close()
+        conn.close()
+
+        if not protocols:
             return (
                 jsonify(
                     {
@@ -145,8 +192,8 @@ def get_task_call_protocol(task_id: str):
             jsonify(
                 {
                     "task_id": task_id,
-                    "call_protocol": call_protocols[task_id],
-                    "task_status": tasks[task_id]["status_code"],
+                    "call_protocol": protocols,
+                    "task_status": task["status_code"],
                 }
             ),
             200,
@@ -174,36 +221,72 @@ def update_profile():
         data = request.get_json()
 
         # Validate required fields
-        required_fields = ["user_id", "first_name", "surname", "birth_date", "insurance"]
+        required_fields = [
+            "user_id",
+            "first_name",
+            "surname",
+            "birth_date",
+            "insurance",
+        ]
         for field in required_fields:
             if field not in data:
                 return (
-                    jsonify({"error": f"Missing required field: {field}", "status": "error"}),
+                    jsonify(
+                        {"error": f"Missing required field: {field}", "status": "error"}
+                    ),
                     400,
                 )
 
         user_id = data["user_id"]
+        conn = get_db_connection()
+        cursor = conn.cursor()
 
-        # Create user profile if it doesn't exist, otherwise update
-        if user_id not in users:
-            users[user_id] = {}
+        # Check if user exists
+        cursor.execute("SELECT id FROM users WHERE id = %s", (user_id,))
+        user = cursor.fetchone()
 
-        # Update user information
-        users[user_id].update(
-            {
-                "user_id": user_id,
-                "first_name": data["first_name"],
-                "surname": data["surname"],
-                "birth_date": data["birth_date"],
-                "insurance": data["insurance"],
-                "updated_at": datetime.now().isoformat(),
-            }
-        )
+        if user:
+            # Update existing user
+            cursor.execute(
+                """
+                UPDATE users
+                SET first_name = %s, last_name = %s, date_of_birth = %s, insurance = %s
+                WHERE id = %s
+                """,
+                (
+                    data["first_name"],
+                    data["surname"],
+                    data["birth_date"],
+                    data["insurance"],
+                    user_id,
+                ),
+            )
+        else:
+            # Create new user
+            cursor.execute(
+                """
+                INSERT INTO users (id, first_name, last_name, date_of_birth, insurance)
+                VALUES (%s, %s, %s, %s, %s)
+                """,
+                (
+                    user_id,
+                    data["first_name"],
+                    data["surname"],
+                    data["birth_date"],
+                    data["insurance"],
+                ),
+            )
+
+        cursor.close()
+        conn.close()
 
         return jsonify({"status": "saved successfully", "user_id": user_id}), 200
 
     except Exception as e:
-        return jsonify({"status": "error", "error": f"Internal server error: {str(e)}"}), 500
+        return (
+            jsonify({"status": "error", "error": f"Internal server error: {str(e)}"}),
+            500,
+        )
 
 
 @app.route("/add_doctor", methods=["POST"])
@@ -226,31 +309,42 @@ def add_doctor():
         for field in required_fields:
             if field not in data:
                 return (
-                    jsonify({"error": f"Missing required field: {field}", "status": "error"}),
+                    jsonify(
+                        {"error": f"Missing required field: {field}", "status": "error"}
+                    ),
                     400,
                 )
 
         # Generate unique doctor ID
         doctor_id = str(uuid.uuid4())
 
-        # Create doctor entry
-        doctor = {
-            "doctor_id": doctor_id,
-            "name": data["name"],
-            "phone": data["phone"],
-            "opening_hours": data["opening_hours"],
-            "profession": data["profession"],
-            "created_at": datetime.now().isoformat(),
-        }
+        conn = get_db_connection()
+        cursor = conn.cursor()
 
-        # Store doctor
-        # TODO: Replace with database storage
-        doctors[doctor_id] = doctor
+        cursor.execute(
+            """
+            INSERT INTO doctors (id, name, phone_number, opening_hours, specialty)
+            VALUES (%s, %s, %s, %s, %s)
+            """,
+            (
+                doctor_id,
+                data["name"],
+                data["phone"],
+                data["opening_hours"],
+                data["profession"],
+            ),
+        )
+
+        cursor.close()
+        conn.close()
 
         return jsonify({"status": "saved successfully", "doctor_id": doctor_id}), 201
 
     except Exception as e:
-        return jsonify({"status": "error", "error": f"Internal server error: {str(e)}"}), 500
+        return (
+            jsonify({"status": "error", "error": f"Internal server error: {str(e)}"}),
+            500,
+        )
 
 
 @app.route("/update_doctor", methods=["PUT"])
@@ -274,31 +368,50 @@ def update_doctor():
         for field in required_fields:
             if field not in data:
                 return (
-                    jsonify({"error": f"Missing required field: {field}", "status": "error"}),
+                    jsonify(
+                        {"error": f"Missing required field: {field}", "status": "error"}
+                    ),
                     400,
                 )
 
         doctor_id = data["doctor_id"]
 
+        conn = get_db_connection()
+        cursor = conn.cursor()
+
         # Check if doctor exists
-        if doctor_id not in doctors:
+        cursor.execute("SELECT id FROM doctors WHERE id = %s", (doctor_id,))
+        if cursor.fetchone() is None:
+            cursor.close()
+            conn.close()
             return jsonify({"error": "Doctor not found", "status": "error"}), 404
 
         # Update doctor information
-        doctors[doctor_id].update(
-            {
-                "name": data["name"],
-                "phone": data["phone"],
-                "opening_hours": data["opening_hours"],
-                "profession": data["profession"],
-                "updated_at": datetime.now().isoformat(),
-            }
+        cursor.execute(
+            """
+            UPDATE doctors
+            SET name = %s, phone_number = %s, opening_hours = %s, specialty = %s
+            WHERE id = %s
+            """,
+            (
+                data["name"],
+                data["phone"],
+                data["opening_hours"],
+                data["profession"],
+                doctor_id,
+            ),
         )
+
+        cursor.close()
+        conn.close()
 
         return jsonify({"status": "saved successfully", "doctor_id": doctor_id}), 200
 
     except Exception as e:
-        return jsonify({"status": "error", "error": f"Internal server error: {str(e)}"}), 500
+        return (
+            jsonify({"status": "error", "error": f"Internal server error: {str(e)}"}),
+            500,
+        )
 
 
 @app.route("/delete_doctor/<doctor_id>", methods=["DELETE"])
@@ -307,18 +420,29 @@ def delete_doctor(doctor_id: str):
     Delete a doctor from the system
     """
     try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+
         # Check if doctor exists
-        if doctor_id not in doctors:
+        cursor.execute("SELECT id FROM doctors WHERE id = %s", (doctor_id,))
+        if cursor.fetchone() is None:
+            cursor.close()
+            conn.close()
             return jsonify({"error": "Doctor not found", "status": "error"}), 404
 
-        # Remove doctor
-        # TODO: Replace with database delete operation
-        del doctors[doctor_id]
+        # Delete doctor
+        cursor.execute("DELETE FROM doctors WHERE id = %s", (doctor_id,))
+
+        cursor.close()
+        conn.close()
 
         return jsonify({"status": "saved successfully", "doctor_id": doctor_id}), 200
 
     except Exception as e:
-        return jsonify({"status": "error", "error": f"Internal server error: {str(e)}"}), 500
+        return (
+            jsonify({"status": "error", "error": f"Internal server error: {str(e)}"}),
+            500,
+        )
 
 
 @app.route("/list_all_doctors", methods=["GET"])
@@ -328,20 +452,21 @@ def list_all_doctors():
     Returns: List of doctor information
     """
     try:
-        doctor_list = []
+        conn = get_db_connection()
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
 
-        # TODO: Replace with database query to fetch doctors
-        for doctor_id, doctor in doctors.items():
-            doctor_info = {
-                "doctor_id": doctor_id,
-                "name": doctor["name"],
-                "phone": doctor["phone"],
-                "opening_hours": doctor["opening_hours"],
-                "profession": doctor["profession"],
-            }
-            doctor_list.append(doctor_info)
+        cursor.execute(
+            """
+            SELECT id as doctor_id, name, phone_number as phone, opening_hours, specialty as profession
+            FROM doctors
+            """
+        )
+        doctors = cursor.fetchall()
 
-        return jsonify({"doctors": doctor_list, "count": len(doctor_list)}), 200
+        cursor.close()
+        conn.close()
+
+        return jsonify({"doctors": doctors, "count": len(doctors)}), 200
 
     except Exception as e:
         return jsonify({"error": f"Internal server error: {str(e)}"}), 500
@@ -351,16 +476,43 @@ def list_all_doctors():
 @app.route("/health", methods=["GET"])
 def health_check():
     """Health check endpoint"""
-    return (
-        jsonify(
-            {
-                "status": "healthy",
-                "timestamp": datetime.now().isoformat(),
-                "active_tasks": len(tasks),
-            }
-        ),
-        200,
-    )
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+
+        # Count active tasks
+        cursor.execute("SELECT COUNT(*) FROM tasks")
+        task_count = cursor.fetchone()[0]
+
+        # Test database connection
+        cursor.execute("SELECT 1")
+
+        cursor.close()
+        conn.close()
+
+        return (
+            jsonify(
+                {
+                    "status": "healthy",
+                    "timestamp": datetime.now().isoformat(),
+                    "active_tasks": task_count,
+                    "database": "connected",
+                }
+            ),
+            200,
+        )
+    except Exception as e:
+        return (
+            jsonify(
+                {
+                    "status": "unhealthy",
+                    "timestamp": datetime.now().isoformat(),
+                    "error": str(e),
+                    "database": "disconnected",
+                }
+            ),
+            500,
+        )
 
 
 @app.route("/", methods=["GET"])
@@ -376,14 +528,12 @@ def root():
                     "POST /schedule_call_task": "Schedule a new call task for appointment booking",
                     "GET /get_task_results": "Get list of all task results",
                     "GET /get_task_call_protocol/<task_id>": "Get call protocol for specific task",
-                    
                     # Doctor and user management endpoints
                     "PUT /update_profile": "Update user profile information",
                     "POST /add_doctor": "Add a new doctor to the system",
                     "PUT /update_doctor": "Update an existing doctor's information",
                     "DELETE /delete_doctor/<doctor_id>": "Delete a doctor from the system",
                     "GET /list_all_doctors": "Get a list of all doctors in the system",
-                    
                     # Health check endpoint
                     "GET /health": "Health check endpoint",
                 },

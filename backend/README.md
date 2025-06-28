@@ -16,3 +16,15 @@ This command runs the container in detached mode (-d) and maps port 80 of the ho
 sudo docker ps
 ```
 This command lists all running containers with their details.
+
+## Stop Container
+```bash
+sudo docker stop medical-api-container
+```
+This command stops the running container gracefully.
+
+## Remove Container
+```bash
+sudo docker rm medical-api-container
+```
+This command removes the stopped container. You must stop a container before removing it.
