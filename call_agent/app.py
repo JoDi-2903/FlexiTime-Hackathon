@@ -124,14 +124,14 @@ def create_claude_session(api_url: str, model_id: str) -> dict:
     return session
 
 
-def process_prompt_in_session(session: dict, user_prompt: str) -> tuple[str, dict]:
+def process_prompt_in_session(claude_session: dict, user_prompt: str) -> tuple[str, dict]:
     """
     Verarbeitet einen einzelnen Prompt innerhalb einer bestehenden Session.
     """
     # print("[CLIENT] Sende Benutzer-Prompt an Claude...")
     api_url, model_id, conversation_history, tools, available_tools = (
-        session['api_url'], session['model_id'], session['conversation_history'],
-        session['tools'], session['available_tools']
+        claude_session['api_url'], claude_session['model_id'], claude_session['conversation_history'],
+        claude_session['tools'], claude_session['available_tools']
     )
     request_payload = {
         "prompt": user_prompt, "modelId": model_id, "messages": conversation_history, "tools": tools
@@ -143,33 +143,33 @@ def process_prompt_in_session(session: dict, user_prompt: str) -> tuple[str, dic
         response.raise_for_status()
         body_content = json.loads(response.json().get("body", "{}"))
         generated_text = body_content.get("generated_text", "")
+        print(generated_text)
         tool_use_response = body_content.get("tool_use")
-        session['conversation_history'] = body_content.get("conversation_history", conversation_history)
+        claude_session['conversation_history'] = body_content.get("conversation_history", conversation_history)
 
         if tool_use_response:
             # ... (Tool-Verarbeitungslogik bleibt unverändert)
-            return "Tool-Nutzung wird verarbeitet...", session
+            print(claude_session)
+            return "Tool-Nutzung wird verarbeitet...", claude_session
         elif generated_text:
-            return generated_text, session
+            return generated_text, claude_session
         else:
-            return "Claude hat keine Antwort geliefert.", session
+            return "Claude hat keine Antwort geliefert.", claude_session
 
     except requests.exceptions.RequestException as e:
-        return f"[CLIENT ERROR] Fehler bei der Anfrage: {e}", session
+        return f"[CLIENT ERROR] Fehler bei der Anfrage: {e}", claude_session
     except Exception as e:
-        return f"[CLIENT ERROR] Unerwarteter Fehler: {e}", session
+        return f"[CLIENT ERROR] Unerwarteter Fehler: {e}", claude_session
 
 
 # --- NEUE FUNKTIONEN für das Polling und die automatische Verarbeitung ---
 
-def trigger_claude_for_task(task: dict, api_url: str, model_id: str):
+def trigger_claude_for_task(task: dict, claude_session: dict):
     """
     Erstellt eine neue Claude-Session für eine bestimmte Aufgabe und startet sie.
     """
     print(f"\n--- [SYSTEM] Neue Aufgabe gefunden: ID {task['task_id']}. Starte Claude-Sitzung. ---")
 
-    # 1. Eine brandneue, isolierte Session für diese Aufgabe erstellen
-    claude_session = create_claude_session(api_url, model_id)
 
     # 2. Den initialen System-Prompt verarbeiten, um die Rolle des Assistenten festzulegen
     _, claude_session = process_prompt_in_session(claude_session, prompts.initialization)
@@ -178,6 +178,8 @@ def trigger_claude_for_task(task: dict, api_url: str, model_id: str):
     task_prompt = (
         f"Hallo, es liegt ein neuer Terminauftrag aus der Datenbank vor. "
         f"Hier sind die Details:\n"
+        f"- Benutzer-ID: {task['user_id']}\n"
+        f"- Arzt-ID: {task['user_id']}\n"
         f"- Auftrags-ID: {task['task_id']}\n"
         f"- Grund des Termins: {task['appointment_reason']}\n"
         f"- Gewünschtes Datum: {task.get('appointment_date', 'N/A')}\n"
@@ -191,11 +193,10 @@ def trigger_claude_for_task(task: dict, api_url: str, model_id: str):
     response_text, _ = process_prompt_in_session(claude_session, task_prompt)
 
     print(f"\n[CLAUDE ANTWORT für Aufgabe {task['task_id']}]")
-    print(response_text)
     print(f"--- [SYSTEM] Verarbeitung für Aufgabe {task['task_id']} abgeschlossen. ---\n")
 
 
-def check_and_process_new_tasks(processed_ids: set, api_url: str, model_id: str):
+def check_and_process_new_tasks(processed_ids: set, claude_session: dict):
     """
     Sucht nach neuen Aufgaben in der DB und löst deren Verarbeitung aus.
     """
@@ -213,11 +214,10 @@ def check_and_process_new_tasks(processed_ids: set, api_url: str, model_id: str)
         tasks = cursor.fetchall()
         cursor.close()
         conn.close()
-
         for task in tasks:
             if task['task_id'] not in processed_ids:
                 # Neue Aufgabe gefunden, Verarbeitung auslösen
-                trigger_claude_for_task(task, api_url, model_id)
+                trigger_claude_for_task(task, session)
                 # Die ID zur Liste der bearbeiteten Aufgaben hinzufügen
                 processed_ids.add(task['task_id'])
 
@@ -231,7 +231,7 @@ def check_and_process_new_tasks(processed_ids: set, api_url: str, model_id: str)
 
 if __name__ == "__main__":
     API_GATEWAY_URL = "https://0621ja9smk.execute-api.us-west-2.amazonaws.com/dev/prompt"
-    CLAUDE_HAIKU_MODEL_ID = "anthropic.claude-3-5-sonnet-20240620-v1:0"
+    CLAUDE_HAIKU_MODEL_ID = "anthropic.claude-3-5-haiku-20241022-v1:0"
 
     # Ein Set, um die IDs der bereits bearbeiteten Aufgaben zu speichern
     processed_task_ids = set()
@@ -240,10 +240,13 @@ if __name__ == "__main__":
     print("Das Programm sucht alle 5 Sekunden nach neuen Aufgaben in der Datenbank.")
     print("Drücken Sie STRG+C, um das Programm zu beenden.")
 
+    session = create_claude_session(API_GATEWAY_URL, CLAUDE_HAIKU_MODEL_ID)
+    process_prompt_in_session(session, prompts.initialization)
+
     try:
         #while True:
             # Nach neuen Aufgaben suchen und diese verarbeiten
-            check_and_process_new_tasks(processed_task_ids, API_GATEWAY_URL, CLAUDE_HAIKU_MODEL_ID)
+            check_and_process_new_tasks(processed_task_ids, session)
 
             # 5 Sekunden warten bis zur nächsten Überprüfung
            # time.sleep(5)
