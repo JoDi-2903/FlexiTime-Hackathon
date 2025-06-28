@@ -92,10 +92,6 @@
                 templateUrl: 'views/profil.html',
                 controller: 'ProfileController'
             })
-            .when('/protokolle', {
-                templateUrl: 'views/protokolle.html',
-                controller: 'HistoryController'
-            })
             .otherwise({ redirectTo: '/' });
     }
 
@@ -275,10 +271,68 @@
 
 
     // ===== ProtokolleController =====
-    function ProtokolleController($scope) {
-        $scope.message = 'Anrufverlauf wird bald kommen…';
-    }
+     // ===== ProtokolleController =====
+   ProtokolleController.$inject = ['$scope', 'ApiService'];
+function ProtokolleController($scope, ApiService) {
+    $scope.plannedCalls = [];
+    $scope.completedCalls = [];
+    $scope.loading = true;
 
+    const doctorsById = {};
+
+    // Schritt 1: Lade Ärzte
+    ApiService.listDoctors().then(res => {
+        res.data.forEach(doc => {
+            doctorsById[doc.doctor_id] = doc.name;
+        });
+
+        // Schritt 2: Lade alle Tasks
+        return ApiService.getTaskResults();
+    }).then(response => {
+        const tasks = response.data.results;
+
+        const openTasks = tasks.filter(t => t.status_code === 'open');
+        const otherTasks = tasks.filter(t => t.status_code !== 'open');
+
+        // Schritt 3: Geplante Anrufe
+        $scope.plannedCalls = openTasks.map(task => ({
+            arzt: doctorsById[task.doctor_id] || 'Unbekannter Arzt',
+            grund: task.appointment_reason || 'Allgemein',
+            datetime: task.date + ' ' + task.time_range_start + '–' + task.time_range_end
+        }));
+
+        // Schritt 4: Erledigte Anrufe mit Call-Protokoll
+        const protocolPromises = otherTasks.map(task => {
+            return ApiService.getTaskCallProtocol(task.task_id)
+                .then(res => {
+                    const protocol = res.data;
+                    return {
+                        arzt: doctorsById[task.doctor_id] || 'Unbekannter Arzt',
+                        grund: task.appointment_reason || 'Allgemein',
+                        datetime: task.date + ' ' + task.time_range_start + '–' + task.time_range_end,
+                        log: (protocol.call_protocol || []).map(p => p.message).join('\n'),
+                        status: protocol.task_status
+                    };
+                })
+                .catch(() => ({
+                    arzt: doctorsById[task.doctor_id] || 'Unbekannter Arzt',
+                    grund: task.appointment_reason || 'Allgemein',
+                    datetime: task.date + ' ' + task.time_range_start + '–' + task.time_range_end,
+                    log: null,
+                    status: 'fail'
+                }));
+        });
+
+        return Promise.all(protocolPromises);
+    }).then(results => {
+        $scope.completedCalls = results;
+        $scope.loading = false;
+        $scope.$apply(); // bei native Promises nötig
+    }).catch(err => {
+        console.error('Fehler beim Laden der Daten:', err);
+        $scope.loading = false;
+    });
+}
     // ===== ProfileController mit Backend-Anbindung =====
     ProfileController.$inject = ['$scope', 'ApiService'];
     function ProfileController($scope, ApiService) {
