@@ -12,19 +12,19 @@
                         <div class="form-group col-md-6">
                             <label for="vorname">Vorname</label>
                             <input id="vorname" type="text" class="form-control" ng-model="user.vorname"
-                                   placeholder="Dein Vorname" required>
+                                placeholder="Dein Vorname" required>
                         </div>
                         <div class="form-group col-md-6">
                             <label for="nachname">Nachname</label>
                             <input id="nachname" type="text" class="form-control" ng-model="user.nachname"
-                                   placeholder="Dein Nachname" required>
+                                placeholder="Dein Nachname" required>
                         </div>
                     </div>
                     <div class="form-row">
                         <div class="form-group col-md-6">
                             <label for="geburtsdatum">Geburtsdatum</label>
                             <input id="geburtsdatum" type="date" class="form-control" ng-model="user.geburtsdatum"
-                                   required>
+                                required>
                         </div>
                         <div class="form-group col-md-6">
                             <label for="versicherung">Versicherung</label>
@@ -56,46 +56,56 @@
                             <div class="card-body">
 
                                 <div class="edit-buttons">
+                                    <!-- Bearbeiten -->
                                     <button type="button" class="btn btn-sm btn-outline-secondary"
-                                            ng-if="editIndex !== idx" ng-click="startEditInline(idx)"
-                                            aria-label="Arzt bearbeiten">✎</button>
+                                        ng-if="editIndex !== idx" ng-click="startEditInline(idx)"
+                                        aria-label="Arzt bearbeiten">✎</button>
+
+                                    <!-- Löschen -->
+                                    <button type="button" class="btn btn-sm btn-outline-danger ml-1"
+                                        ng-click="deleteDoctor(arzt.doctor_id, idx)"
+                                        aria-label="Arzt löschen">🗑️</button>
+
+                                    <!-- Speichern (Inline-Edit) -->
                                     <button type="button" class="btn btn-sm btn-success mr-1" ng-if="editIndex === idx"
-                                            ng-click="saveEditInline()" aria-label="Änderungen speichern">✓</button>
+                                        ng-click="saveEditInline()" aria-label="Änderungen speichern">✓</button>
+
+                                    <!-- Abbrechen (Inline-Edit) -->
                                     <button type="button" class="btn btn-sm btn-outline-secondary"
-                                            ng-if="editIndex === idx" ng-click="cancelEditInline()"
-                                            aria-label="Bearbeitung abbrechen">✕</button>
+                                        ng-if="editIndex === idx" ng-click="cancelEditInline()"
+                                        aria-label="Bearbeitung abbrechen">✕</button>
                                 </div>
+
 
                                 <p>
                                     <strong>Name:</strong>
                                     <span ng-if="editIndex !== idx">{{ arzt.name }}</span>
                                     <input ng-if="editIndex === idx" type="text"
-                                           class="form-control form-control-sm inline-input"
-                                           ng-model="editableArzt.name">
+                                        class="form-control form-control-sm inline-input" ng-model="editableArzt.name">
                                 </p>
 
                                 <p>
                                     <strong>Telefon:</strong>
                                     <span ng-if="editIndex !== idx">{{ arzt.telefon }}</span>
                                     <input ng-if="editIndex === idx" type="text"
-                                           class="form-control form-control-sm inline-input"
-                                           ng-model="editableArzt.telefon">
+                                        class="form-control form-control-sm inline-input"
+                                        ng-model="editableArzt.telefon">
                                 </p>
 
                                 <p>
                                     <strong>Öffnungszeiten:</strong>
                                     <span ng-if="editIndex !== idx">{{ arzt.oeffnungszeiten }}</span>
                                     <input ng-if="editIndex === idx" type="text"
-                                           class="form-control form-control-sm inline-input"
-                                           ng-model="editableArzt.oeffnungszeiten">
+                                        class="form-control form-control-sm inline-input"
+                                        ng-model="editableArzt.oeffnungszeiten">
                                 </p>
 
                                 <p>
                                     <strong>Fachrichtung:</strong>
                                     <span ng-if="editIndex !== idx">{{ arzt.fachrichtung }}</span>
                                     <input ng-if="editIndex === idx" type="text"
-                                           class="form-control form-control-sm inline-input"
-                                           ng-model="editableArzt.fachrichtung">
+                                        class="form-control form-control-sm inline-input"
+                                        ng-model="editableArzt.fachrichtung">
                                 </p>
 
                             </div>
@@ -119,13 +129,16 @@
                 <input type="text" class="form-control" ng-model="neuerArzt.name" placeholder="Name" required>
             </div>
             <div class="form-group col-md-3">
-                <input type="text" class="form-control" ng-model="neuerArzt.telefon" placeholder="Telefonnummer" required>
+                <input type="text" class="form-control" ng-model="neuerArzt.telefon" placeholder="Telefonnummer"
+                    required>
             </div>
             <div class="form-group col-md-3">
-                <input type="text" class="form-control" ng-model="neuerArzt.oeffnungszeiten" placeholder="Öffnungszeiten" required>
+                <input type="text" class="form-control" ng-model="neuerArzt.oeffnungszeiten"
+                    placeholder="Öffnungszeiten" required>
             </div>
             <div class="form-group col-md-2">
-                <input type="text" class="form-control" ng-model="neuerArzt.fachrichtung" placeholder="Fachrichtung" required>
+                <input type="text" class="form-control" ng-model="neuerArzt.fachrichtung" placeholder="Fachrichtung"
+                    required>
             </div>
             <div class="form-group col-auto">
                 <button type="submit" class="btn btn-save" aria-label="Neuen Arzt speichern">✓</button>

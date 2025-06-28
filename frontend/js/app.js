@@ -305,6 +305,28 @@
                 oeffnungszeiten: doc.opening_hours,
                 fachrichtung: doc.profession
             }));
+            // Bindung in $scope
+            $scope.deleteDoctor = deleteDoctor;
+
+            /**
+             * Löscht einen Arzt per API und entfernt ihn aus der Liste.
+             * @param {string} id    – doctor_id des Arztes
+             * @param {number} index – Index im $scope.aerzte-Array
+             */
+            function deleteDoctor(id, index) {
+                if (!confirm('Arzt wirklich löschen?')) return;
+                ApiService.deleteDoctor(id)
+                    .then(() => {
+                        // Entferne Eintrag aus der UI
+                        $scope.aerzte.splice(index, 1);
+                        alert('Arzt wurde gelöscht.');
+                    })
+                    .catch(err => {
+                        console.error('Fehler beim Löschen:', err);
+                        alert('Löschen fehlgeschlagen. Es gibt noch geplante Anrufe.');
+                    });
+            }
+
         });
 
         function saveProfile() {
