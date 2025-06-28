@@ -271,72 +271,36 @@
 
 
     // ===== ProtokolleController =====
-     // ===== ProtokolleController =====
-   ProtokolleController.$inject = ['$scope', 'ApiService'];
-function ProtokolleController($scope, ApiService) {
-    $scope.plannedCalls = [];
-    $scope.completedCalls = [];
-    $scope.loading = true;
+    function ProtokolleController($scope) {
+        $scope.message = 'Anrufverlauf wird bald kommen…';
+    }
 
-    const doctorsById = {};
-
-    // Schritt 1: Lade Ärzte
-    ApiService.listDoctors().then(res => {
-        res.data.forEach(doc => {
-            doctorsById[doc.doctor_id] = doc.name;
-        });
-
-        // Schritt 2: Lade alle Tasks
-        return ApiService.getTaskResults();
-    }).then(response => {
-        const tasks = response.data.results;
-
-        const openTasks = tasks.filter(t => t.status_code === 'open');
-        const otherTasks = tasks.filter(t => t.status_code !== 'open');
-
-        // Schritt 3: Geplante Anrufe
-        $scope.plannedCalls = openTasks.map(task => ({
-            arzt: doctorsById[task.doctor_id] || 'Unbekannter Arzt',
-            grund: task.appointment_reason || 'Allgemein',
-            datetime: task.date + ' ' + task.time_range_start + '–' + task.time_range_end
-        }));
-
-        // Schritt 4: Erledigte Anrufe mit Call-Protokoll
-        const protocolPromises = otherTasks.map(task => {
-            return ApiService.getTaskCallProtocol(task.task_id)
-                .then(res => {
-                    const protocol = res.data;
-                    return {
-                        arzt: doctorsById[task.doctor_id] || 'Unbekannter Arzt',
-                        grund: task.appointment_reason || 'Allgemein',
-                        datetime: task.date + ' ' + task.time_range_start + '–' + task.time_range_end,
-                        log: (protocol.call_protocol || []).map(p => p.message).join('\n'),
-                        status: protocol.task_status
-                    };
-                })
-                .catch(() => ({
-                    arzt: doctorsById[task.doctor_id] || 'Unbekannter Arzt',
-                    grund: task.appointment_reason || 'Allgemein',
-                    datetime: task.date + ' ' + task.time_range_start + '–' + task.time_range_end,
-                    log: null,
-                    status: 'fail'
-                }));
-        });
-
-        return Promise.all(protocolPromises);
-    }).then(results => {
-        $scope.completedCalls = results;
-        $scope.loading = false;
-        $scope.$apply(); // bei native Promises nötig
-    }).catch(err => {
-        console.error('Fehler beim Laden der Daten:', err);
-        $scope.loading = false;
-    });
-}
     // ===== ProfileController mit Backend-Anbindung =====
     ProfileController.$inject = ['$scope', 'ApiService'];
     function ProfileController($scope, ApiService) {
-        $scope.user = { vorname: '', nachname: '', geburtsdatum: '', versicherung: '', id: 'demo-user-id' };
+        $scope.user = {
+            user_id: '123e4567-e89b-12d3-a456-426614174000',
+            vorname: '',
+            nachname: '',
+            geburtsdatum: '',
+            versicherung: ''
+        };
+
+        // 2) Direkt beim Controller-Start Nutzer­daten holen
+        ApiService.getUserDetails($scope.user.user_id)
+            .then(res => {
+                console.log('✅ API /get_user_details response:', res.data);
+
+                $scope.user.vorname = res.data.first_name || '';
+                $scope.user.nachname = res.data.surname || '';
+                $scope.user.versicherung = res.data.insurance || '';
+
+                // so bekommst Du ein Date‑Objekt ins Modell
+                if (res.data.birth_date) {
+                    $scope.user.geburtsdatum = new Date(res.data.birth_date);
+                }
+            })
+            .catch(err => console.error('❌ getUserDetails fehlgeschlagen:', err));
         $scope.aerzte = [];
         $scope.neuerArzt = {};
         $scope.editableArzt = {};

@@ -61,10 +61,10 @@
                                         <td>{{ call.log || '–' }}</td>
                                         <td>
                                             <span class="status-icon" ng-class="{
-                                'text-success': call.status==='success',
-                                'text-danger': call.status==='fail'
+                                'text-success': call.status==='booked',
+                                'text-danger': call.status==='failed'
                               }">
-                                                {{ call.status==='success' ? '✓' : '✕' }}
+                                                {{ call.status==='booked' ? '✓' : '✕' }}
                                             </span>
                                         </td>
                                     </tr>
