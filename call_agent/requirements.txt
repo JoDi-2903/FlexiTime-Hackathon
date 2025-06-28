@@ -1,3 +1,10 @@
 SQLAlchemy
 psycopg2-binary
 requests
+boto3
+botocore
+websockets
+pydub
+pyaudio
+ffmpeg-python
+asyncio
