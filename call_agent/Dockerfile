@@ -11,6 +11,9 @@ ENV PYTHONUNBUFFERED=1
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
     gcc \
+    libportaudio2 libportaudiocpp0 portaudio19-dev \
+    python3-dev \
+    build-essential \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy requirements first to leverage Docker cache
