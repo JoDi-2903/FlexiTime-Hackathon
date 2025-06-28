@@ -231,23 +231,82 @@ select.input-hero {
 }
 
 
-/* Status‑Icons rund & farbig */
+.protokolle-wrapper {
+    padding: 2rem 0;
+}
+
+.protokolle-card {
+    background-color: #ffffff;
+    border: none;
+    border-radius: 0.5rem;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+    margin-bottom: 2rem;
+}
+
+.protokolle-card .card-header {
+    background-color: #1EAAF1;
+    color: #ffffff;
+    font-size: 1.25rem;
+    font-weight: 600;
+    padding: 1rem 1.5rem;
+    border-top-left-radius: 0.5rem;
+    border-top-right-radius: 0.5rem;
+    border-bottom: none;
+}
+
+.protokolle-card .card-body {
+    padding: 0;
+}
+
+.protokolle-table {
+    margin-bottom: 0;
+}
+
+.protokolle-table th {
+    background-color: #E6F6FA;
+    color: #333333;
+    font-weight: 500;
+    border: none;
+    padding: 1rem;
+}
+
+.protokolle-table td {
+    border: none;
+    padding: 1rem;
+    vertical-align: middle;
+}
+
+.protokolle-table tbody tr:hover {
+    background-color: #F0FCFF;
+}
+
 .status-icon {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    width: 1.5rem;
-    height: 1.5rem;
-    border-radius: 50%;
-    font-weight: bold;
+    font-size: 1.25rem;
 }
 
-.status-icon.success {
-    background-color: #d4edda;
-    color: #155724;
+.status-icon.text-success {
+    color: #28A745;
 }
 
-.status-icon.fail {
-    background-color: #f8d7da;
-    color: #721c24;
+.status-icon.text-danger {
+    color: #DC3545;
+}
+
+/* css/style.css – Ergänzung ganz unten */
+
+.protokolle-table {
+    margin-bottom: 0;
+    border-collapse: separate;
+    border-spacing: 0;
+}
+
+/* Zwischen den Zellen eine vertikale Linie */
+.protokolle-table th,
+.protokolle-table td {
+    border-right: 1px solid #E0E0E0;
+}
+
+.protokolle-table th:last-child,
+.protokolle-table td:last-child {
+    border-right: none;
 }
