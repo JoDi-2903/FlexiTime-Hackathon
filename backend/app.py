@@ -204,6 +204,38 @@ def get_task_call_protocol(task_id: str):
 
 
 # DOCTOR AND USER MANAGEMENT ENDPOINTS
+@app.route("/get_user_details/<user_id>", methods=["GET"])
+def get_user_details(user_id: str):
+    """
+    Get user profile details by user ID
+    Returns: User's personal information
+    """
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
+
+        cursor.execute(
+            """
+            SELECT first_name, last_name as surname, date_of_birth as birth_date, insurance
+            FROM users
+            WHERE id = %s
+            """,
+            (user_id,),
+        )
+        user = cursor.fetchone()
+
+        cursor.close()
+        conn.close()
+
+        if not user:
+            return jsonify({"error": "User not found", "user_id": user_id}), 404
+
+        return jsonify(user), 200
+
+    except Exception as e:
+        return jsonify({"error": f"Internal server error: {str(e)}"}), 500
+
+
 @app.route("/update_profile", methods=["PUT"])
 def update_profile():
     """
@@ -529,6 +561,7 @@ def root():
                     "GET /get_task_results": "Get list of all task results",
                     "GET /get_task_call_protocol/<task_id>": "Get call protocol for specific task",
                     # Doctor and user management endpoints
+                    "GET /get_user_details/<user_id>": "Get user profile details by user ID",
                     "PUT /update_profile": "Update user profile information",
                     "POST /add_doctor": "Add a new doctor to the system",
                     "PUT /update_doctor": "Update an existing doctor's information",
