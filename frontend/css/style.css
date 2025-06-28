@@ -41,7 +41,7 @@ body {
      ========================================================================== */
 
 .hero-section {
-    background: url('../images/hero-bg.jpg') center center / cover no-repeat;
+    background: url('../images/hero-bgg.jpg') center center / cover no-repeat;
     width: 100%;
     min-height: calc(100vh - 64px);
     position: relative;
