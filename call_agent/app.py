@@ -1,0 +1,432 @@
+import json
+import re
+import time
+from typing import Optional
+
+import psycopg2
+import requests
+from flask import jsonify
+from psycopg2.extras import RealDictCursor
+
+from call_agent.s2t import speech_to_text
+from call_agent.t2s import text_to_speech
+
+
+# DATABASE CONNECTION AND TASK PROCESSING
+def get_db_connection():
+    """Stellt eine Verbindung zur PostgreSQL-Datenbank her."""
+    conn = psycopg2.connect(
+        host="terminagent-db.cty0uqagcewj.us-west-2.rds.amazonaws.com",
+        port=5432,
+        dbname="postgres",
+        user="postgres",
+        password="2WiIo5_g2-c+",
+    )
+    conn.autocommit = True
+    return conn
+
+
+def check_for_open_tasks() -> list[Optional[str], Optional[dict]]:
+    """
+    Sucht nach offene Tasks in der DB und gibt ggf. die ID und ein task dictionary zurück.
+    """
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
+
+        # WICHTIG: Die Abfrage muss eine eindeutige ID (z.B. task_id) enthalten
+        cursor.execute(
+            """
+            SELECT *
+            FROM tasks
+            WHERE status_code = 'open'
+            """
+        )  # Optional TODO: Also check in SQL that doctor office is opened at current time and date
+        tasks = cursor.fetchall()
+        cursor.close()
+        conn.close()
+        if tasks:
+            # Found at least one open task
+            return [tasks[0]["task_id"], tasks[0]]  # Return the task ID and the task
+        else:
+            print("[SYSTEM] Keine offenen Aufgaben gefunden. Prüfe in 5 Sekunden erneut.")
+            return [None, None]
+
+    except psycopg2.Error as e:
+        print(f"[DB ERROR] Datenbankfehler: {e}")
+        return [None, None]
+    except Exception as e:
+        print(f"[SYSTEM ERROR] Ein unerwarteter Fehler ist aufgetreten: {e}")
+        return [None, None]
+
+
+# SAVE TO DB
+def update_task_status(task_id: str, status: str) -> bool:
+    """
+    Updates the status_code of a task in the database.
+
+    Args:
+        task_id: The ID of the task to update
+        status: The new status ('finished' or 'error')
+
+    Returns:
+        bool: True if successful, False otherwise
+    """
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+
+        cursor.execute(
+            """
+            UPDATE tasks
+            SET status_code = %s
+            WHERE task_id = %s
+            """,
+            (status, task_id),
+        )
+
+        cursor.close()
+        conn.close()
+        print(f"[SYSTEM] Task {task_id} status updated to {status}")
+        return True
+    except psycopg2.Error as e:
+        print(f"[DB ERROR] Failed to update task status: {e}")
+        return False
+
+
+def save_call_protocol(task_id: str, conversation_history: list) -> bool:
+    """
+    Saves the conversation protocol to the call_protocols table.
+
+    Args:
+        task_id: The ID of the task associated with the call
+        conversation_history: List of conversation messages with speaker info
+
+    Returns:
+        bool: True if successful, False otherwise
+    """
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+
+        for entry in conversation_history:
+            speaker = entry["speaker"]
+            message = entry["message"]
+
+            cursor.execute(
+                """
+                INSERT INTO call_protocols (task_id, speaker, message)
+                VALUES (%s, %s, %s)
+                """,
+                (task_id, speaker, message),
+            )
+
+        cursor.close()
+        conn.close()
+        print(
+            f"[SYSTEM] Call protocol saved for task {task_id} with {len(conversation_history)} messages"
+        )
+        return True
+    except psycopg2.Error as e:
+        print(f"[DB ERROR] Failed to save call protocol: {e}")
+        return False
+
+
+def save_appointment_details(
+    task_id: str, appointment_date: str, appointment_time: str
+) -> bool:
+    """
+    Saves the appointment date and time to the tasks table.
+
+    Args:
+        task_id: The ID of the task
+        appointment_date: The date of the appointment (YYYY-MM-DD)
+        appointment_time: The time of the appointment (HH:MM)
+
+    Returns:
+        bool: True if successful, False otherwise
+    """
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+
+        # Combine date and time into a timestamp
+        appointment_datetime = f"{appointment_date} {appointment_time}:00"
+
+        cursor.execute(
+            """
+            UPDATE tasks
+            SET booked_appointment = %s
+            WHERE task_id = %s
+            """,
+            (appointment_datetime, task_id),
+        )
+
+        cursor.close()
+        conn.close()
+        print(
+            f"[SYSTEM] Appointment details saved for task {task_id}: {appointment_datetime}"
+        )
+        return True
+    except psycopg2.Error as e:
+        print(f"[DB ERROR] Failed to save appointment details: {e}")
+        return False
+
+
+# CLAUDE LLM API INTERACTIONS
+TOOL_DEFINITIONS = [
+    {
+        "name": "schedule_call_task",
+        "description": "Plant eine Anrufaufgabe zur Terminbuchung für einen Benutzer und einen Arzt mit spezifischen Details.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "user_id": {
+                    "type": "string",
+                    "description": "Die ID des Benutzers, der den Anruf plant.",
+                },
+                "doctor_id": {
+                    "type": "string",
+                    "description": "Die ID des Arztes, bei dem ein Termin gebucht werden soll.",
+                },
+                "appointment_reason": {
+                    "type": "string",
+                    "description": "Der Grund für den Termin, z.B. 'Kontrolluntersuchung', 'Erstberatung'.",
+                },
+                "additional_remark": {
+                    "type": "string",
+                    "description": "Zusätzliche Anmerkungen oder Details zum Termin. Wenn keine vorhanden sind, ein leerer String oder 'N/A'.",
+                },
+                "date": {
+                    "type": "string",
+                    "description": "Das gewünschte Datum des Anrufs im Format YYYY-MM-DD.",
+                },
+                "time_range_start": {
+                    "type": "string",
+                    "description": "Die Startzeit des gewünschten Zeitfensters für den Anruf im Format HH:MM.",
+                },
+                "time_range_end": {
+                    "type": "string",
+                    "description": "Die Endzeit des gewünschten Zeitfensters für den Anruf im Format HH:MM.",
+                },
+            },
+            "required": [
+                "user_id",
+                "doctor_id",
+                "appointment_reason",
+                "additional_remark",
+                "date",
+                "time_range_start",
+                "time_range_end",
+            ],
+        },
+    }
+]
+
+
+def create_claude_session(api_url: str, model_id: str) -> dict:
+    """
+    Initialisiert und konfiguriert eine neue Konversations-Session.
+    """
+    # print(f"Starte Claude Session mit Modell: {model_id}")
+    session = {
+        "api_url": api_url,
+        "model_id": model_id,
+        "conversation_history": [],
+        "tools": TOOL_DEFINITIONS,
+    }
+    return session
+
+
+def send_prompt_to_claude(
+    claude_session: dict,
+    prompt: str,
+    timeout: int = 20,
+    activate_tool_use: bool = False,
+) -> tuple[str, dict]:
+    """
+    Verarbeitet einen einzelnen Prompt innerhalb einer bestehenden Session.
+
+    Note: Stateless API-Aufruf, daher wird die Historie in der Session gespeichert.
+    """
+    print(f"\n[SYSTEM] Sende Prompt an Claude: \n{prompt}\n")
+    # Extrahiere Session-Daten
+    api_url = claude_session.get("api_url")
+    model_id = claude_session.get("model_id")
+    conversation_history = claude_session.get("conversation_history", [])
+    tools = claude_session.get("tools", [])
+
+    # Bereite Request-Payload vor
+    request_payload = {
+        "prompt": prompt,
+        "modelId": model_id,
+        "messages": conversation_history,
+    }
+    if tools and activate_tool_use:
+        # Füge Tools nur hinzu, wenn sie vorhanden sind
+        request_payload["tools"] = tools
+
+    headers = {"Content-Type": "application/json"}
+
+    try:
+        # Sende Anfrage mit Timeout
+        response = requests.post(
+            api_url, headers=headers, json=request_payload, timeout=timeout
+        )
+
+        # Prüfe auf HTTP-Fehler
+        response.raise_for_status()
+
+        # Parse Response Body
+        try:
+            response_json = response.json()
+            body_content = json.loads(response_json.get("body", "{}"))
+        except (json.JSONDecodeError, ValueError) as e:
+            return (
+                f"[PARSING ERROR] Fehler beim Parsen der API-Antwort: {e}",
+                claude_session,
+            )
+
+        # Extrahiere Antwortkomponenten mit Fallback-Werten
+        generated_text = body_content.get("generated_text", "")
+        tool_use_response = body_content.get("tool_use")
+
+        # Aktualisiere Konversationsverlauf, falls vorhanden
+        if "conversation_history" in body_content:
+            claude_session["conversation_history"] = body_content[
+                "conversation_history"
+            ]
+
+        # Rückgabe basierend auf Response-Typ
+        if tool_use_response and activate_tool_use:
+            return "Tool-Nutzung wird verarbeitet...", claude_session
+            # Optional TODO: Give Claude db read access
+        elif generated_text:
+            return generated_text, claude_session
+        else:
+            return "Claude hat keine Antwort geliefert.", claude_session
+
+    except requests.exceptions.RequestException as e:
+        return f"[CLIENT ERROR] Fehler bei der Anfrage: {e}", claude_session
+    except Exception as e:
+        return f"[CLIENT ERROR] Unerwarteter Fehler: {e}", claude_session
+
+
+def pass_task_and_appointment_details_to_claude(
+    task: dict, claude_session: dict
+) -> dict:
+    """
+    Erstellt eine neue Claude-Session für eine bestimmte Aufgabe und startet sie.
+    """
+    # Einen spezifischen Prompt aus den Aufgabendetails erstellen und senden
+    task_prompt = (
+        f"[Details zum Terminbuchungsauftrag aus der Datenbank]\n"
+        f"- Benutzer-ID: {task['user_id']}\n"
+        f"- Arzt-ID: {task['doctor_id']}\n"
+        f"- Auftrags-ID: {task['task_id']}\n"
+        f"- Grund des Termins: {task['appointment_reason']}\n"
+        f"- Gewünschtes Datum: {task.get('appointment_date', 'N/A')}\n"
+        f"- Gewünschtes Zeitfenster: {task.get('time_range_start', 'N/A')} - {task.get('time_range_end', 'N/A')}\n\n"
+        f"\n\n"
+    )
+
+    # Den initialen System-Prompt verarbeiten, um die Rolle des Assistenten festzulegen
+    system_prompt = "Du heißt FlexiTime bist ein Anruf-Agent, der automatisiert Terminbuchungen bei Arztpraxen für Kunden vornehmen kann, die nicht selbst telefonieren können oder wollen (z.B. zeitliche Gründe, körperliche Einschränkungen, usw.). Das heißt, dass du stellvertretend wie ein Assistent für die Kunden Terminvereinbarungen beim Arzt vereinbarst. Dafür erhälst du Infomationen aus der Datenbank bereitgestellt, die alle relevanten Informationen über den Kunden, sein Anliegen, den Arzt bei dem der Termin vereinbart werden soll sowie die Terminspanne die dem Kunden passt enthält. Achte unbedingt darauf, dass die Zeitspanne eingehalten wird. Wenn der Gesprächspartner der Arztpraxis eine Uhrzeit außerhalb der Spanne vorschlägt darfst und sollst du ablehnen. Deine Aufgabe ist es, diese Informationen zu nutzen, um den Anruf beim Arzt zu tätigen und den Termin zu vereinbaren. Du wirst dabei von einem KI-Modell unterstützt, das dir hilft, die richtigen Fragen zu stellen und die Informationen zu verarbeiten. Deine Antworten sollten klar und präzise sein, damit der Arzt oder das Praxisteam die Informationen leicht verstehen kann und auch nicht zu lang werden. Es soll wie ein natürliches Gespräch zwischen zwei Personen sein. Wenn alles geklärt ist, beendest du das Gespräch indem du dich verabschiedest, dann 'FINISHED_CALL' ausgibst und dann im json-Format das Gesprächsergebnis. Das JSOn soll dabei das Format task_status: str mit den Optionen 'successful' und 'unsuccessful' enthalten, appointment_date: str mit dem Datum des Termins im Format YYYY-MM-DD und appointment_time: str mit der Uhrzeit des Termins im Format HH:MM. Wenn du keine Informationen hast, die du ausgeben kannst, dann gib 'N/A' aus. Es ist wichtig dass du dich an diese Struktur hältst, damit die Informationen korrekt verarbeitet werden können. Wenn eine Terminvereinbarung nicht möglich ist, z.B. weil die Praxis für den vom Nutzer angegebenen Zeitraum schon komplett ausgebucht ist oder aus diversen anderen Gründen, gib bitte den task_status 'unsuccessful' im JSON an und erfinde keinen Termin. Bitte reagiere dynamisch auf den Gesprächsverlauf mit dem Mitarbeiter oder der Mitarbeiterin aus der Arztpraxis aber verliere dein Ziel dabei nicht aus den Augen. Das Gespräch sollte nicht abdriften. Ziehe das Gespräch nicht unnötig in die Länge sondern beende es über das definierte Schema, sofern der Termin feststeht. Alle weiteren Prompts sind die Telefonantworten des Gesprächpartners aus der Arzpraxis. Es wird der gesamte bisherige Gesprächsverlauf mit jedem neuen Prompt mitgegeben, sodass der Kontext für dich erhalten bleibt. Kommuniziere bitte auf Deutsch, sei freundlich, höflich aber nicht zu formell und steif."
+    _, claude_session = send_prompt_to_claude(
+        claude_session, task_prompt + system_prompt
+    )
+    return claude_session
+
+
+# MAIN
+if __name__ == "__main__":
+    API_GATEWAY_URL = (
+        "https://0621ja9smk.execute-api.us-west-2.amazonaws.com/dev/prompt"
+    )
+    CLAUDE_HAIKU_MODEL_ID = "anthropic.claude-3-5-haiku-20241022-v1:0"
+
+    print("Starte den automatischen Task-Processor...")
+    print("Das Programm sucht alle 5 Sekunden nach neuen Aufgaben in der Datenbank.")
+    print("Drücken Sie STRG+C, um das Programm zu beenden.")
+
+    try:
+        while True:
+            # Nach neuen Aufgaben suchen und diese verarbeiten
+            task_id, task_details_dict = check_for_open_tasks()
+            if task_id:
+                print(f"[SYSTEM] Neue Aufgabe mit ID {task_id} wurde gefunden.")
+                session = create_claude_session(API_GATEWAY_URL, CLAUDE_HAIKU_MODEL_ID)
+                session = pass_task_and_appointment_details_to_claude(
+                    task_details_dict, session
+                )
+
+                # Track conversation history for storing in the database
+                conversation_history = []
+
+                ai_response: str = None
+                while ai_response is None or not re.search(
+                    r"FINISHED[\s_]*CALL", ai_response, re.IGNORECASE
+                ):
+                    # Trap for conversation between AI and doctor office
+                    doctor_office_response = speech_to_text(5)
+                    conversation_history.append(
+                        {"speaker": "doctor_office", "message": doctor_office_response}
+                    )
+                    ai_response, session = send_prompt_to_claude(
+                        session, doctor_office_response
+                    )
+                    if re.search(r"FINISHED[\s_]*CALL", ai_response, re.IGNORECASE):
+                        break
+                    conversation_history.append(
+                        {"speaker": "ai_agent", "message": ai_response}
+                    )
+                    text_to_speech(ai_response)
+                # Split the AI response at "FINISHED_CALL"
+                if "FINISHED_CALL" in ai_response:
+                    conversation_part, result_part = ai_response.split(
+                        "FINISHED_CALL", 1
+                    )
+                    conversation_history.append(
+                        {"speaker": "ai_agent", "message": conversation_part.strip()}
+                    )
+                    text_to_speech(conversation_part.strip())
+                    print(f"[SYSTEM] Call completed. Processing results...")
+                    print(f"[SYSTEM] Conversation: {conversation_part.strip()}")
+                    print(f"[SYSTEM] Result data: {result_part.strip()}")
+
+                    # Save the call protocol to the database
+                    save_call_protocol(task_id, conversation_history)
+
+                    try:
+                        # Try to parse the JSON data from the result part
+                        result_json = json.loads(result_part.strip())
+                        print(f"[SYSTEM] Parsed result: {result_json}")
+
+                        # Update task status based on the success of the appointment booking
+                        if result_json.get("task_status") == "successful":
+                            update_task_status(task_id, "finished")
+
+                            # Save appointment date and time if successful
+                            appointment_date = result_json.get("appointment_date", None)
+                            appointment_time = result_json.get("appointment_time", None)
+                            if (
+                                appointment_date
+                                and appointment_time
+                                and appointment_date != "N/A"
+                                and appointment_time != "N/A"
+                            ):
+                                save_appointment_details(
+                                    task_id, appointment_date, appointment_time
+                                )
+                        else:
+                            update_task_status(task_id, "failed")
+
+                    except json.JSONDecodeError as e:
+                        print(f"[SYSTEM ERROR] Could not parse result JSON: {e}")
+                        update_task_status(task_id, "error")
+
+            # 5 Sekunden warten bis zur nächsten Überprüfung
+            time.sleep(5)
+
+    except KeyboardInterrupt:
+        print("\nProgramm wird beendet. Auf Wiedersehen!")
