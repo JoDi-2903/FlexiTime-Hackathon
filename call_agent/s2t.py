@@ -62,14 +62,9 @@ def speech_to_text(aufnahmedauer_sekunden: int):
         result = model.transcribe(TEMP_DATEINAME, language=SPRACHE)
 
         print("\n--- TRANSKRIPTION ---")
-        print(result["text"].strip() if result["text"] else "[Keine Sprache erkannt]")
-        print("-----------------------")
+        return result["text"].strip() if result["text"] else "[Keine Sprache erkannt]"
 
     finally:
         if os.path.exists(TEMP_DATEINAME):
             os.remove(TEMP_DATEINAME)
-            print(f"Temporäre Datei '{TEMP_DATEINAME}' wurde gelöscht.")
-
-
-if __name__ == "__main__":
-    speech_to_text(5)
+print(f"Temporäre Datei '{TEMP_DATEINAME}' wurde gelöscht.")
