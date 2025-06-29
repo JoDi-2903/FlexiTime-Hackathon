@@ -2,12 +2,15 @@ import json
 import re
 import time
 from typing import Optional
+
 import psycopg2
 import requests
 from flask import jsonify
 from psycopg2.extras import RealDictCursor
+
 from call_agent.s2t import speech_to_text
 from call_agent.t2s import text_to_speech
+
 
 # DATABASE CONNECTION AND TASK PROCESSING
 def get_db_connection():
@@ -239,10 +242,13 @@ if __name__ == "__main__":
                     ai_response, session = send_prompt_to_claude(
                         session, doctor_office_response
                     )
+                    if re.search(r"FINISHED[\s_]*CALL", ai_response, re.IGNORECASE):
+                        break
                     text_to_speech(ai_response)
                 # Split the AI response at "FINISHED_CALL"
                 if "FINISHED_CALL" in ai_response:
                     conversation_part, result_part = ai_response.split("FINISHED_CALL", 1)
+                    text_to_speech(conversation_part.strip())
                     print(f"[SYSTEM] Call completed. Processing results...")
                     print(f"[SYSTEM] Conversation: {conversation_part.strip()}")
                     print(f"[SYSTEM] Result data: {result_part.strip()}")
