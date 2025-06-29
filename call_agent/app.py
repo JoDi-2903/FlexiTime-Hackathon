@@ -49,6 +49,7 @@ def check_for_open_tasks() -> list[Optional[str], Optional[dict]]:
             # Found at least one open task
             return [tasks[0]["task_id"], tasks[0]]  # Return the task ID and the task
         else:
+            print("[SYSTEM] Keine offenen Aufgaben gefunden. Prüfe in 5 Sekunden erneut.")
             return [None, None]
 
     except psycopg2.Error as e:
