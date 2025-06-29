@@ -1,8 +1,7 @@
 import json
-import time  # Import für die Wartefunktion
+import time
 from typing import Optional
 
-import prompts
 import psycopg2
 import requests
 from flask import jsonify
@@ -172,23 +171,21 @@ def pass_task_and_appointment_details_to_claude(
     """
     Erstellt eine neue Claude-Session für eine bestimmte Aufgabe und startet sie.
     """
-    # Den initialen System-Prompt verarbeiten, um die Rolle des Assistenten festzulegen
-    system_prompt = "Du heißt FlexiTime und du bist ein Anruf-Agent für deinen Kunden. Das heißt, dass du stellvertretend für deinen Kunden Terminvereinbarungen beim Arzt vereinbarst. Wenn du einen Auftrag erstellt hast, "
-    _, claude_session = send_prompt_to_claude(claude_session, system_prompt)
-
     # Einen spezifischen Prompt aus den Aufgabendetails erstellen und senden
     task_prompt = (
-        f"Hallo, es liegt ein neuer Terminauftrag aus der Datenbank vor. "
-        f"Hier sind die Details:\n"
+        f"[Details zum Terminbuchungsauftrag aus der Datenbank]\n"
         f"- Benutzer-ID: {task['user_id']}\n"
         f"- Arzt-ID: {task['user_id']}\n"
         f"- Auftrags-ID: {task['task_id']}\n"
         f"- Grund des Termins: {task['appointment_reason']}\n"
         f"- Gewünschtes Datum: {task.get('appointment_date', 'N/A')}\n"
         f"- Gewünschtes Zeitfenster: {task.get('time_range_start', 'N/A')} - {task.get('time_range_end', 'N/A')}\n\n"
-        f"Bitte bestätige den Erhalt dieser Aufgabe und leite die nächsten Schritte ein."
+        f" "
     )
-    _, claude_session = send_prompt_to_claude(claude_session, task_prompt)
+
+    # Den initialen System-Prompt verarbeiten, um die Rolle des Assistenten festzulegen
+    system_prompt = "Du heißt FlexiTime bist ein Anruf-Agent, der automatisiert Terminbuchungen bei Arztpraxen für Kunden vornehmen kann, die nicht selbst telefonieren können oder wollen (z.B. zeitliche Gründe, körperliche EInschränkungen, usw.). Das heißt, dass du stellvertretend wie ein Assistent für die Kunden Terminvereinbarungen beim Arzt vereinbarst. Dafür erhälst du Infomationen aus der Datenbank bereitgestellt, die alle relevanten Informationen über den Kunden, sein Anliegen, den Arzt bei dem der Termin vereinbart werden soll sowie die Terminspanne die dem Kunden passt enthält. Deine Aufgabe ist es, diese Informationen zu nutzen, um den Anruf beim Arzt zu tätigen und den Termin zu vereinbaren. Du wirst dabei von einem KI-Modell unterstützt, das dir hilft, die richtigen Fragen zu stellen und die Informationen zu verarbeiten. Deine Antworten sollten klar und präzise sein, damit der Arzt oder das Praxisteam die Informationen leicht verstehen kann und auch nicht zu lang werden. Es soll wie ein natürliches Gespräch zwischen zwei Personen sein. Wenn alles geklärt ist, beendest du das Gespräch indem du dich verabschiedest, dann 'FINISHED_CALL' ausgibst und dann im json-Format das Gesprächsergebnis. Das JSOn soll dabei das Format task_status: str mit den Optionen 'successful' und 'unsuccessful' enthalten, appointment_date: str mit dem Datum des Termins im Format YYYY-MM-DD und appointment_time: str mit der Uhrzeit des Termins im Format HH:MM. Wenn du keine Informationen hast, die du ausgeben kannst, dann gib 'N/A' aus. Es ist wichtig dass du dich an diese Struktur hältst, damit die Informationen korrekt verarbeitet werden können. Wenn eine Terminvereinbarung nicht möglich ist, z.B. weil die Praxis für den vom Nutzer angegebenen Zeitraum schon komplett ausgebucht ist oder aus diversen anderen Gründen, gib bitte den task_status 'unsuccessful' im JSON an und erfinde keinen Termin. Bitte reagiere dynamisch auf den Gesprächsverlauf mit dem Mitarbeiter oder der Mitarbeiterin aus der Arztpraxis aber verliere dein Ziel dabei nicht aus den Augben. Das Gespräch sollte nicht abdriften. Alle weiteren Prompts sind die Telefonantworten des Gesprächpartners aus der Arzpraxis. Es wird der gesamte bisherige Gesprächsverlauf mit jedem neuen Prompt mitgegeben, sodass der Kontext für dich erhalten bleibt. Kommuniziere bitte auf Deutsch, sei freundlich, höflich aber nicht zu formell und steif."
+    _, claude_session = send_prompt_to_claude(claude_session, task_prompt+system_prompt)
     return claude_session
 
 
@@ -219,6 +216,21 @@ if __name__ == "__main__":
                         session, doctor_office_respone
                     )
                     # TODO: Text2Speech Function
+                # Split the AI response at "FINISHED_CALL"
+                if "FINISHED_CALL" in ai_response:
+                    conversation_part, result_part = ai_response.split("FINISHED_CALL", 1)
+                    print(f"[SYSTEM] Call completed. Processing results...")
+                    print(f"[SYSTEM] Conversation: {conversation_part.strip()}")
+                    print(f"[SYSTEM] Result data: {result_part.strip()}")
+                    
+                    try:
+                        # Try to parse the JSON data from the result part
+                        result_json = json.loads(result_part.strip())
+                        print(f"[SYSTEM] Parsed result: {result_json}")
+                        # This JSON contains task_status, appointment_date, appointment_time
+                    except json.JSONDecodeError as e:
+                        print(f"[SYSTEM ERROR] Could not parse result JSON: {e}")
+
                 # TODO: Update task in db to 'finished' or 'error'
                 # TODO: Save call protocol to db
                 # TODO: Save appointmeint date and time to db if successful
