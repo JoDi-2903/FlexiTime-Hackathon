@@ -129,7 +129,7 @@ def get_task_results():
 
         cursor.execute(
             """
-            SELECT task_id, status_code, booked_appointment
+            SELECT task_id, status_code, booked_appointment, doctor_id, user_id, created_at, appointment_date, appointment_reason
             FROM tasks
             """
         )
