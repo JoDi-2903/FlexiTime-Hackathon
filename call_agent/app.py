@@ -177,7 +177,7 @@ def pass_task_and_appointment_details_to_claude(
     task_prompt = (
         f"[Details zum Terminbuchungsauftrag aus der Datenbank]\n"
         f"- Benutzer-ID: {task['user_id']}\n"
-        f"- Arzt-ID: {task['user_id']}\n"
+        f"- Arzt-ID: {task['doctor_id']}\n"
         f"- Auftrags-ID: {task['task_id']}\n"
         f"- Grund des Termins: {task['appointment_reason']}\n"
         f"- Gewünschtes Datum: {task.get('appointment_date', 'N/A')}\n"
@@ -205,15 +205,15 @@ if __name__ == "__main__":
     try:
         while True:
             # Nach neuen Aufgaben suchen und diese verarbeiten
-            open_task_result = check_for_open_tasks()
-            task_id, task_details_dict = open_task_result
+            task_id, task_details_dict = check_for_open_tasks()
             if task_id:
                 print(f"[SYSTEM] Neue Aufgabe mit ID {task_id} wurde gefunden.")
                 session = create_claude_session(API_GATEWAY_URL, CLAUDE_HAIKU_MODEL_ID)
                 session = pass_task_and_appointment_details_to_claude(
                     task_details_dict, session
                 )
-                while not "FINISHED_CALL" in ai_response:
+                ai_response: str = None
+                while ai_response is None or "FINISHED_CALL" not in ai_response:
                     # Trap for conversation between AI and doctor office
                     doctor_office_respone = input("> ")  # TODO: Spech2Text Function
                     ai_response, session = send_prompt_to_claude(
