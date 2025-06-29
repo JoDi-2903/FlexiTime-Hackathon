@@ -41,7 +41,7 @@ def check_for_open_tasks() -> list[Optional[str], Optional[dict]]:
             FROM tasks
             WHERE status_code = 'open'
             """
-        )  # TODO: Also check in SQL that doctor office is opened at current time and date
+        )  # Optional TODO: Also check in SQL that doctor office is opened at current time and date
         tasks = cursor.fetchall()
         cursor.close()
         conn.close()
