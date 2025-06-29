@@ -2,12 +2,12 @@ import json
 import re
 import time
 from typing import Optional
-
 import psycopg2
 import requests
 from flask import jsonify
 from psycopg2.extras import RealDictCursor
-
+from call_agent.s2t import speech_to_text
+from call_agent.t2s import text_to_speech
 
 # DATABASE CONNECTION AND TASK PROCESSING
 def get_db_connection():
@@ -36,7 +36,7 @@ def check_for_open_tasks() -> list[Optional[str], Optional[dict]]:
             """
             SELECT *
             FROM tasks
-            WHERE status = 'open'
+            WHERE status_code = 'open'
             """
         )  # TODO: Also check in SQL that doctor office is opened at current time and date
         tasks = cursor.fetchall()
@@ -149,26 +149,26 @@ def send_prompt_to_claude(claude_session: dict, prompt: str, timeout: int = 20, 
     try:
         # Sende Anfrage mit Timeout
         response = requests.post(
-            api_url, 
-            headers=headers, 
+            api_url,
+            headers=headers,
             json=request_payload,
             timeout=timeout
         )
-        
+
         # Prüfe auf HTTP-Fehler
         response.raise_for_status()
-        
+
         # Parse Response Body
         try:
             response_json = response.json()
             body_content = json.loads(response_json.get("body", "{}"))
         except (json.JSONDecodeError, ValueError) as e:
             return f"[PARSING ERROR] Fehler beim Parsen der API-Antwort: {e}", claude_session
-        
+
         # Extrahiere Antwortkomponenten mit Fallback-Werten
         generated_text = body_content.get("generated_text", "")
         tool_use_response = body_content.get("tool_use")
-        
+
         # Aktualisiere Konversationsverlauf, falls vorhanden
         if "conversation_history" in body_content:
             claude_session["conversation_history"] = body_content["conversation_history"]
@@ -235,19 +235,18 @@ if __name__ == "__main__":
                 )
                 ai_response: str = None
                 while ai_response is None or not re.search(r"FINISHED[\s_]*CALL", ai_response, re.IGNORECASE):
-                    # Trap for conversation between AI and doctor office
-                    doctor_office_respone = input("> ")  # TODO: Spech2Text Function
+                    doctor_office_response = speech_to_text(5)
                     ai_response, session = send_prompt_to_claude(
-                        session, doctor_office_respone
+                        session, doctor_office_response
                     )
-                    # TODO: Text2Speech Function
+                    text_to_speech(ai_response)
                 # Split the AI response at "FINISHED_CALL"
                 if "FINISHED_CALL" in ai_response:
                     conversation_part, result_part = ai_response.split("FINISHED_CALL", 1)
                     print(f"[SYSTEM] Call completed. Processing results...")
                     print(f"[SYSTEM] Conversation: {conversation_part.strip()}")
                     print(f"[SYSTEM] Result data: {result_part.strip()}")
-                    
+
                     try:
                         # Try to parse the JSON data from the result part
                         result_json = json.loads(result_part.strip())
