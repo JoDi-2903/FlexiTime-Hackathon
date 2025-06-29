@@ -14,12 +14,12 @@ def text_to_speech(text, output_file="voice_files/speech.mp3", voice_id="Daniel"
         polly_client = boto3.client(
             "polly",
             region_name="us-west-2",
-            aws_access_key_id=os.environ.get("AWS_ACCESS_KEY_ID"),
-            aws_secret_access_key=os.environ.get("AWS_SECRET_ACCESS_KEY"),
+            aws_access_key_id="AKIATMOA6AAEPC3EUEF6",
+            aws_secret_access_key="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",
         )
 
         response = polly_client.synthesize_speech(
-            Text=text, OutputFormat="mp3", VoiceId=voice_id
+            Text=text, OutputFormat="mp3", VoiceId=voice_id, Engine='neural',
         )
 
         if "AudioStream" in response:
@@ -40,7 +40,3 @@ def text_to_speech(text, output_file="voice_files/speech.mp3", voice_id="Daniel"
         print(f"AWS Error: {e}")
     except Exception as e:
         print(f"General Error: {e}")
-
-
-# # Usage
-# text_to_speech("Willkommen bei Amazon Polly!")

@@ -1,140 +1,75 @@
-import asyncio
-import json
+import whisper
+import pyaudio
+import wave
 import os
 import time
 
-import boto3
-import pyaudio
-import websockets
-from botocore.exceptions import ClientError
+# --- Konfiguration ---
+MODEL_GROESSE = "small"
+SPRACHE = "de"
+TEMP_DATEINAME = "temp_aufnahme.wav"
 
 
-async def speech_to_text(language_code: str = "de-DE", break_delay: float = 2.0) -> str:
-    """
-    Captures audio from microphone and uses AWS Transcribe streaming to convert speech to text.
-    Stops listening after detecting a 2-second pause in speech.
+def speech_to_text(aufnahmedauer_sekunden: int):
+    """Nimmt Audio vom Mikrofon auf (mit der stabilen Callback-Methode) und transkribiert es."""
 
-    :param language_code: Language code for transcription
-    :param break_delay: Time in seconds to wait before stopping transcription after a pause
-    :return: Transcribed text as a string
-    """
-    # Initialize PyAudio
     audio = pyaudio.PyAudio()
 
-    # Audio parameters
-    FORMAT = pyaudio.paInt16
-    CHANNELS = 1
-    RATE = 16000
-    CHUNK = 1024
+    # Eine Liste, in der die Callback-Funktion die Audiodaten ablegt
+    frames = []
 
-    # AWS Transcribe client
-    try:
-        transcribe_client = boto3.client(
-            "transcribe",
-            region_name="us-west-2",
-            aws_access_key_id=os.environ.get("AWS_ACCESS_KEY_ID"),
-            aws_secret_access_key=os.environ.get("AWS_SECRET_ACCESS_KEY"),
-        )
-    except ClientError as e:
-        print(f"AWS Error: {e}")
-        return ""
+    # --- NEUE CALLBACK-FUNKTION ---
+    # Diese Funktion wird von PyAudio im Hintergrund aufgerufen, sobald neue Audiodaten da sind.
+    def audio_callback(in_data, frame_count, time_info, status):
+        frames.append(in_data)
+        return in_data, pyaudio.paContinue  # Signalisiert, dass die Aufnahme weitergehen soll
 
-    # Get streaming endpoint
-    try:
-        response = transcribe_client.start_stream_transcription(
-            LanguageCode=language_code, MediaSampleRateHertz=RATE, MediaEncoding="pcm"
-        )
-        streaming_endpoint = response["StreamTranscriptionWebsocketURI"]
-    except ClientError as e:
-        print(f"AWS Error: {e}")
-        return ""
+    # --- GEÄNDERTER STREAM-AUFRUF ---
+    # Wir übergeben unsere Callback-Funktion hier direkt an den Stream.
+    stream = audio.open(format=pyaudio.paInt16,
+                        channels=1,
+                        rate=16000,
+                        input=True,
+                        frames_per_buffer=1024,
+                        stream_callback=audio_callback)  # Hier ist die Magie!
 
-    # Open audio stream
-    stream = audio.open(
-        format=FORMAT, channels=CHANNELS, rate=RATE, input=True, frames_per_buffer=CHUNK
-    )
+    print(f"▶️  Aufnahme läuft für {aufnahmedauer_sekunden} Sekunden...")
 
-    print("Listening... (speak now)")
+    # Der Stream läuft jetzt im Hintergrund. Wir warten einfach die gewünschte Zeit.
+    # Die alte for-Schleife wird nicht mehr benötigt.
+    time.sleep(aufnahmedauer_sekunden)
 
-    # Initialize variables
-    transcription = ""
-    last_speech_time = time.time()
-    is_speaking = False
-
-    async with websockets.connect(streaming_endpoint) as websocket:
-        # Start the audio stream
-        async def send_audio():
-            nonlocal last_speech_time, is_speaking
-
-            while True:
-                data = stream.read(CHUNK, exception_on_overflow=False)
-
-                # Simple voice activity detection based on audio level
-                audio_level = max(
-                    abs(
-                        int.from_bytes(data[i : i + 2], byteorder="little", signed=True)
-                    )
-                    for i in range(0, len(data), 2)
-                )
-
-                if audio_level > 500:  # Threshold for voice detection
-                    if not is_speaking:
-                        is_speaking = True
-                    last_speech_time = time.time()
-
-                # Check for pause
-                if is_speaking and time.time() - last_speech_time > break_delay:
-                    # pause detected
-                    break
-
-                # Send audio chunk to AWS
-                await websocket.send(data)
-                await asyncio.sleep(0.01)
-
-            # Close the stream when done
-            await websocket.close()
-
-        # Receive transcription results
-        async def receive_transcription():
-            nonlocal transcription
-
-            while True:
-                try:
-                    result = await websocket.recv()
-                    result = json.loads(result)
-
-                    if "Transcript" in result and "Results" in result["Transcript"]:
-                        for result_item in result["Transcript"]["Results"]:
-                            if not result_item.get("IsPartial", True):
-                                if (
-                                    "Alternatives" in result_item
-                                    and result_item["Alternatives"]
-                                ):
-                                    transcription = " ".join(
-                                        [
-                                            transcription,
-                                            result_item["Alternatives"][0][
-                                                "Transcript"
-                                            ],
-                                        ]
-                                    ).strip()
-                                    print(f"Transcript: {transcription}")
-                except websockets.exceptions.ConnectionClosed:
-                    break
-
-        # Run tasks concurrently
-        await asyncio.gather(send_audio(), receive_transcription())
-
-    # Clean up
+    # Aufnahme stoppen
     stream.stop_stream()
     stream.close()
     audio.terminate()
+    print("⏹️  Aufnahme beendet.")
 
-    print(f"Final transcript: {transcription}")
-    return transcription
+    # Der Rest des Codes bleibt unverändert
+    # ------------------------------------
+    with wave.open(TEMP_DATEINAME, 'wb') as wf:
+        wf.setnchannels(1)
+        wf.setsampwidth(audio.get_sample_size(pyaudio.paInt16))
+        wf.setframerate(16000)
+        wf.writeframes(b''.join(frames))
+    print(f"Aufnahme temporär gespeichert als '{TEMP_DATEINAME}'.")
+
+    try:
+        print("Lade Whisper-Modell...")
+        model = whisper.load_model(MODEL_GROESSE)
+
+        print("Transkription wird durchgeführt...")
+        result = model.transcribe(TEMP_DATEINAME, language=SPRACHE)
+
+        print("\n--- TRANSKRIPTION ---")
+        print(result["text"].strip() if result["text"] else "[Keine Sprache erkannt]")
+        print("-----------------------")
+
+    finally:
+        if os.path.exists(TEMP_DATEINAME):
+            os.remove(TEMP_DATEINAME)
+            print(f"Temporäre Datei '{TEMP_DATEINAME}' wurde gelöscht.")
 
 
-# if __name__ == "__main__":
-#     import asyncio
-#     result = asyncio.run(speech_to_text())
-#     print(f"You said: {result}")
+if __name__ == "__main__":
+    speech_to_text(5)
