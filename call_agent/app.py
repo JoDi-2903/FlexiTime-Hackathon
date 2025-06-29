@@ -59,6 +59,111 @@ def check_for_open_tasks() -> list[Optional[str], Optional[dict]]:
         return [None, None]
 
 
+# SAVE TO DB
+def update_task_status(task_id: str, status: str) -> bool:
+    """
+    Updates the status_code of a task in the database.
+    
+    Args:
+        task_id: The ID of the task to update
+        status: The new status ('finished' or 'error')
+    
+    Returns:
+        bool: True if successful, False otherwise
+    """
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        cursor.execute(
+            """
+            UPDATE tasks
+            SET status_code = %s
+            WHERE task_id = %s
+            """,
+            (status, task_id)
+        )
+        
+        cursor.close()
+        conn.close()
+        print(f"[SYSTEM] Task {task_id} status updated to {status}")
+        return True
+    except psycopg2.Error as e:
+        print(f"[DB ERROR] Failed to update task status: {e}")
+        return False
+
+def save_call_protocol(task_id: str, conversation_history: list) -> bool:
+    """
+    Saves the conversation protocol to the call_protocols table.
+    
+    Args:
+        task_id: The ID of the task associated with the call
+        conversation_history: List of conversation messages with speaker info
+    
+    Returns:
+        bool: True if successful, False otherwise
+    """
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        for entry in conversation_history:
+            speaker = entry['speaker']
+            message = entry['message']
+            
+            cursor.execute(
+                """
+                INSERT INTO call_protocols (task_id, speaker, message)
+                VALUES (%s, %s, %s)
+                """,
+                (task_id, speaker, message)
+            )
+        
+        cursor.close()
+        conn.close()
+        print(f"[SYSTEM] Call protocol saved for task {task_id} with {len(conversation_history)} messages")
+        return True
+    except psycopg2.Error as e:
+        print(f"[DB ERROR] Failed to save call protocol: {e}")
+        return False
+
+def save_appointment_details(task_id: str, appointment_date: str, appointment_time: str) -> bool:
+    """
+    Saves the appointment date and time to the tasks table.
+    
+    Args:
+        task_id: The ID of the task
+        appointment_date: The date of the appointment (YYYY-MM-DD)
+        appointment_time: The time of the appointment (HH:MM)
+    
+    Returns:
+        bool: True if successful, False otherwise
+    """
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        # Combine date and time into a timestamp
+        appointment_datetime = f"{appointment_date} {appointment_time}:00"
+        
+        cursor.execute(
+            """
+            UPDATE tasks
+            SET booked_appointment = %s
+            WHERE task_id = %s
+            """,
+            (appointment_datetime, task_id)
+        )
+        
+        cursor.close()
+        conn.close()
+        print(f"[SYSTEM] Appointment details saved for task {task_id}: {appointment_datetime}")
+        return True
+    except psycopg2.Error as e:
+        print(f"[DB ERROR] Failed to save appointment details: {e}")
+        return False
+
+
 # CLAUDE LLM API INTERACTIONS
 TOOL_DEFINITIONS = [
     {
@@ -236,34 +341,54 @@ if __name__ == "__main__":
                 session = pass_task_and_appointment_details_to_claude(
                     task_details_dict, session
                 )
+
+                # Track conversation history for storing in the database
+                conversation_history = []
+
                 ai_response: str = None
                 while ai_response is None or not re.search(r"FINISHED[\s_]*CALL", ai_response, re.IGNORECASE):
+                    # Trap for conversation between AI and doctor office
                     doctor_office_response = speech_to_text(5)
+                    conversation_history.append({'speaker': 'doctor_office', 'message': doctor_office_response})
                     ai_response, session = send_prompt_to_claude(
                         session, doctor_office_response
                     )
                     if re.search(r"FINISHED[\s_]*CALL", ai_response, re.IGNORECASE):
                         break
+                    conversation_history.append({'speaker': 'ai_agent', 'message': ai_response})
                     text_to_speech(ai_response)
                 # Split the AI response at "FINISHED_CALL"
                 if "FINISHED_CALL" in ai_response:
                     conversation_part, result_part = ai_response.split("FINISHED_CALL", 1)
+                    conversation_history.append({'speaker': 'ai_agent', 'message': conversation_part.strip()})
                     text_to_speech(conversation_part.strip())
                     print(f"[SYSTEM] Call completed. Processing results...")
                     print(f"[SYSTEM] Conversation: {conversation_part.strip()}")
                     print(f"[SYSTEM] Result data: {result_part.strip()}")
 
+                    # Save the call protocol to the database
+                    save_call_protocol(task_id, conversation_history)
+                    
                     try:
                         # Try to parse the JSON data from the result part
                         result_json = json.loads(result_part.strip())
                         print(f"[SYSTEM] Parsed result: {result_json}")
-                        # This JSON contains task_status, appointment_date, appointment_time
+                        
+                        # Update task status based on the success of the appointment booking
+                        if result_json.get('task_status') == 'successful':
+                            update_task_status(task_id, 'finished')
+                            
+                            # Save appointment date and time if successful
+                            appointment_date = result_json.get('appointment_date', None)
+                            appointment_time = result_json.get('appointment_time', None)
+                            if appointment_date and appointment_time and appointment_date != 'N/A' and appointment_time != 'N/A':
+                                save_appointment_details(task_id, appointment_date, appointment_time)
+                        else:
+                            update_task_status(task_id, 'failed')
+                            
                     except json.JSONDecodeError as e:
                         print(f"[SYSTEM ERROR] Could not parse result JSON: {e}")
-
-                # TODO: Update task in db to 'finished' or 'error'
-                # TODO: Save call protocol to db
-                # TODO: Save appointmeint date and time to db if successful
+                        update_task_status(task_id, 'error')
 
             # 5 Sekunden warten bis zur nächsten Überprüfung
             time.sleep(5)
