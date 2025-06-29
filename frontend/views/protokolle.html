@@ -1,0 +1,85 @@
+<!-- views/protokolle.html -->
+<section class="protokolle-wrapper">
+    <div class="container">
+        <div class="row">
+
+            <!-- Geplante Anrufe -->
+            <div class="col-md-6">
+                <div class="card protokolle-card">
+                    <div class="card-header">
+                        Geplante Anrufe
+                    </div>
+                    <div class="card-body">
+                        <div class="table-responsive">
+                            <table class="table protokolle-table mb-0">
+                                <thead>
+                                    <tr>
+                                        <th>Arzt</th>
+                                        <th>Art des Termins</th>
+                                        <th>Geplanter Anruf</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr ng-repeat="call in plannedCalls">
+                                        <td>{{ call.arzt }}</td>
+                                        <td>{{ call.grund }}</td>
+                                        <td>{{ call.datetime }}</td>
+                                    </tr>
+                                    <tr ng-if="plannedCalls.length === 0">
+                                        <td colspan="3" class="text-center text-muted py-4">
+                                            Keine geplanten Anrufe.
+                                        </td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Erledigte Anrufe -->
+            <div class="col-md-6">
+                <div class="card protokolle-card">
+                    <div class="card-header">
+                        Erledigte Anrufe
+                    </div>
+                    <div class="card-body">
+                        <div class="table-responsive">
+                            <table class="table protokolle-table mb-0">
+                                <thead>
+                                    <tr>
+                                        <th>Arzt</th>
+                                        <th>Art des Termins</th>
+                                        <th>Anrufprotokoll</th>
+                                        <th>Status</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr ng-repeat="call in completedCalls">
+                                        <td>{{ call.arzt }}</td>
+                                        <td>{{ call.grund }}</td>
+                                        <td>{{ call.log || '–' }}</td>
+                                        <td>
+                                            <span class="status-icon" ng-class="{
+                                'text-success': call.status==='booked',
+                                'text-danger': call.status==='failed'
+                              }">
+                                                {{ call.status==='booked' ? '✓' : '✕' }}
+                                            </span>
+                                        </td>
+                                    </tr>
+                                    <tr ng-if="completedCalls.length === 0">
+                                        <td colspan="4" class="text-center text-muted py-4">
+                                            Noch keine Anrufe erfolgt.
+                                        </td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+    </div>
+</section>
