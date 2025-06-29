@@ -91,7 +91,7 @@ def schedule_call_task():
                 data["date"],
                 data["time_range_start"],
                 data["time_range_end"],
-                "scheduled",
+                "open",
                 datetime.now(),
             ),
         )
