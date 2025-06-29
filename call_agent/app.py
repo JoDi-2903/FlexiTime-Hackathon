@@ -22,7 +22,7 @@ def get_db_connection():
     return conn
 
 
-def check_for_open_tasks() -> tuple[Optional[str], Optional[dict]]:
+def check_for_open_tasks() -> list[Optional[str], Optional[dict]]:
     """
     Sucht nach offene Tasks in der DB und gibt ggf. die ID und ein task dictionary zurück.
     """
@@ -43,14 +43,16 @@ def check_for_open_tasks() -> tuple[Optional[str], Optional[dict]]:
         conn.close()
         if tasks:
             # Found at least one open task
-            return tasks[0]["task_id"], tasks
+            return [tasks[0]["task_id"], tasks[0]]  # Return the task ID and the task
         else:
-            return None, None
+            return [None, None]
 
     except psycopg2.Error as e:
         print(f"[DB ERROR] Datenbankfehler: {e}")
+        return [None, None]
     except Exception as e:
         print(f"[SYSTEM ERROR] Ein unerwarteter Fehler ist aufgetreten: {e}")
+        return [None, None]
 
 
 # CLAUDE LLM API INTERACTIONS
@@ -203,7 +205,8 @@ if __name__ == "__main__":
     try:
         while True:
             # Nach neuen Aufgaben suchen und diese verarbeiten
-            task_id, task_details_dict = check_for_open_tasks()
+            open_task_result = check_for_open_tasks()
+            task_id, task_details_dict = open_task_result
             if task_id:
                 print(f"[SYSTEM] Neue Aufgabe mit ID {task_id} wurde gefunden.")
                 session = create_claude_session(API_GATEWAY_URL, CLAUDE_HAIKU_MODEL_ID)
@@ -211,7 +214,8 @@ if __name__ == "__main__":
                     task_details_dict, session
                 )
                 while not "FINISHED_CALL" in ai_response:
-                    doctor_office_respone = "PLACEHOLDER"  # TODO: Spech2Text Function
+                    # Trap for conversation between AI and doctor office
+                    doctor_office_respone = input("> ")  # TODO: Spech2Text Function
                     ai_response, session = send_prompt_to_claude(
                         session, doctor_office_respone
                     )
