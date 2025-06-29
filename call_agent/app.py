@@ -121,42 +121,62 @@ def create_claude_session(api_url: str, model_id: str) -> dict:
     return session
 
 
-def send_prompt_to_claude(claude_session: dict, prompt: str) -> tuple[str, dict]:
+def send_prompt_to_claude(claude_session: dict, prompt: str, timeout: int = 20, activate_tool_use: bool = False) -> tuple[str, dict]:
     """
     Verarbeitet einen einzelnen Prompt innerhalb einer bestehenden Session.
 
     Note: Stateless API-Aufruf, daher wird die Historie in der Session gespeichert.
     """
     print(f"\n[SYSTEM] Sende Prompt an Claude: \n{prompt}\n")
-    api_url, model_id, conversation_history, tools = (
-        claude_session["api_url"],
-        claude_session["model_id"],
-        claude_session["conversation_history"],
-        claude_session["tools"],
-    )
+    # Extrahiere Session-Daten
+    api_url = claude_session.get("api_url")
+    model_id = claude_session.get("model_id")
+    conversation_history = claude_session.get("conversation_history", [])
+    tools = claude_session.get("tools", [])
+
+    # Bereite Request-Payload vor
     request_payload = {
         "prompt": prompt,
         "modelId": model_id,
         "messages": conversation_history,
-        "tools": tools,
     }
+    if tools and activate_tool_use:
+        # Füge Tools nur hinzu, wenn sie vorhanden sind
+        request_payload["tools"] = tools
+
     headers = {"Content-Type": "application/json"}
 
     try:
-        response = requests.post(api_url, headers=headers, json=request_payload)
-        response.raise_for_status()
-        body_content = json.loads(response.json().get("body", "{}"))
-        generated_text = body_content.get("generated_text", "")
-        print(f"[CLAUDE RESPONSE] {generated_text}")
-        tool_use_response = body_content.get("tool_use")
-        claude_session["conversation_history"] = body_content.get(
-            "conversation_history", conversation_history
+        # Sende Anfrage mit Timeout
+        response = requests.post(
+            api_url, 
+            headers=headers, 
+            json=request_payload,
+            timeout=timeout
         )
+        
+        # Prüfe auf HTTP-Fehler
+        response.raise_for_status()
+        
+        # Parse Response Body
+        try:
+            response_json = response.json()
+            body_content = json.loads(response_json.get("body", "{}"))
+        except (json.JSONDecodeError, ValueError) as e:
+            return f"[PARSING ERROR] Fehler beim Parsen der API-Antwort: {e}", claude_session
+        
+        # Extrahiere Antwortkomponenten mit Fallback-Werten
+        generated_text = body_content.get("generated_text", "")
+        tool_use_response = body_content.get("tool_use")
+        
+        # Aktualisiere Konversationsverlauf, falls vorhanden
+        if "conversation_history" in body_content:
+            claude_session["conversation_history"] = body_content["conversation_history"]
 
-        if tool_use_response:
-            # ... (Tool-Verarbeitungslogik bleibt unverändert)
-            print(claude_session)
+        # Rückgabe basierend auf Response-Typ
+        if tool_use_response and activate_tool_use:
             return "Tool-Nutzung wird verarbeitet...", claude_session
+            # Optional TODO: Give Claude db read access
         elif generated_text:
             return generated_text, claude_session
         else:
