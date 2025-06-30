@@ -1,12 +1,12 @@
 import json
 import re
 import time
-from typing import Optional
+from typing import Optional, Any
 
 import psycopg2
 import requests
 from flask import jsonify
-from psycopg2.extras import RealDictCursor
+from psycopg2.extras import RealDictCursor, RealDictRow
 
 from call_agent.s2t import speech_to_text
 from call_agent.t2s import text_to_speech
@@ -25,11 +25,13 @@ def get_db_connection():
     conn.autocommit = True
     return conn
 
-
+patient_name = ""
 def check_for_open_tasks() -> list[Optional[str], Optional[dict]]:
     """
     Sucht nach offene Tasks in der DB und gibt ggf. die ID und ein task dictionary zurück.
     """
+    global patient_name
+
     try:
         conn = get_db_connection()
         cursor = conn.cursor(cursor_factory=RealDictCursor)
@@ -39,10 +41,27 @@ def check_for_open_tasks() -> list[Optional[str], Optional[dict]]:
             """
             SELECT *
             FROM tasks
-            WHERE status_code = 'open'
+            where status_code = 'open'
             """
         )  # Optional TODO: Also check in SQL that doctor office is opened at current time and date
         tasks = cursor.fetchall()
+
+        sql_task_id = tasks[0]["user_id"]
+        cursor.execute(
+            f"""
+            SELECT first_name, last_name
+            FROM users
+            where \'{sql_task_id}\' = id
+            """
+        )
+        name = cursor.fetchall()
+        record = name[0]
+        first_name = record['first_name']
+        last_name = record['last_name']
+
+        # Concatenate using an f-string
+        patient_name = f"{first_name} {last_name}"
+
         cursor.close()
         conn.close()
         if tasks:
@@ -330,7 +349,7 @@ def pass_task_and_appointment_details_to_claude(
     )
 
     # Den initialen System-Prompt verarbeiten, um die Rolle des Assistenten festzulegen
-    system_prompt = "Du heißt FlexiTime bist ein Anruf-Agent, der automatisiert Terminbuchungen bei Arztpraxen für Kunden vornehmen kann, die nicht selbst telefonieren können oder wollen (z.B. zeitliche Gründe, körperliche Einschränkungen, usw.). Das heißt, dass du stellvertretend wie ein Assistent für die Kunden Terminvereinbarungen beim Arzt vereinbarst. Dafür erhälst du Infomationen aus der Datenbank bereitgestellt, die alle relevanten Informationen über den Kunden, sein Anliegen, den Arzt bei dem der Termin vereinbart werden soll sowie die Terminspanne die dem Kunden passt enthält. Achte unbedingt darauf, dass die Zeitspanne eingehalten wird. Wenn der Gesprächspartner der Arztpraxis eine Uhrzeit außerhalb der Spanne vorschlägt darfst und sollst du ablehnen. Deine Aufgabe ist es, diese Informationen zu nutzen, um den Anruf beim Arzt zu tätigen und den Termin zu vereinbaren. Du wirst dabei von einem KI-Modell unterstützt, das dir hilft, die richtigen Fragen zu stellen und die Informationen zu verarbeiten. Deine Antworten sollten klar und präzise sein, damit der Arzt oder das Praxisteam die Informationen leicht verstehen kann und auch nicht zu lang werden. Es soll wie ein natürliches Gespräch zwischen zwei Personen sein. Wenn alles geklärt ist, beendest du das Gespräch indem du dich verabschiedest, dann 'FINISHED_CALL' ausgibst und dann im json-Format das Gesprächsergebnis. Das JSOn soll dabei das Format task_status: str mit den Optionen 'successful' und 'unsuccessful' enthalten, appointment_date: str mit dem Datum des Termins im Format YYYY-MM-DD und appointment_time: str mit der Uhrzeit des Termins im Format HH:MM. Wenn du keine Informationen hast, die du ausgeben kannst, dann gib 'N/A' aus. Es ist wichtig dass du dich an diese Struktur hältst, damit die Informationen korrekt verarbeitet werden können. Wenn eine Terminvereinbarung nicht möglich ist, z.B. weil die Praxis für den vom Nutzer angegebenen Zeitraum schon komplett ausgebucht ist oder aus diversen anderen Gründen, gib bitte den task_status 'unsuccessful' im JSON an und erfinde keinen Termin. Bitte reagiere dynamisch auf den Gesprächsverlauf mit dem Mitarbeiter oder der Mitarbeiterin aus der Arztpraxis aber verliere dein Ziel dabei nicht aus den Augen. Das Gespräch sollte nicht abdriften. Ziehe das Gespräch nicht unnötig in die Länge sondern beende es über das definierte Schema, sofern der Termin feststeht. Alle weiteren Prompts sind die Telefonantworten des Gesprächpartners aus der Arzpraxis. Es wird der gesamte bisherige Gesprächsverlauf mit jedem neuen Prompt mitgegeben, sodass der Kontext für dich erhalten bleibt. Kommuniziere bitte auf Deutsch, sei freundlich, höflich aber nicht zu formell und steif."
+    system_prompt = f"Du heißt FlexiTime bist ein Anruf-Agent, der automatisiert Terminbuchungen bei Arztpraxen für Kunden vornehmen kann, die nicht selbst telefonieren können oder wollen (z.B. zeitliche Gründe, körperliche Einschränkungen, usw.). Das heißt, dass du stellvertretend wie ein Assistent für die Kunden Terminvereinbarungen beim Arzt vereinbarst. Dafür erhälst du Infomationen aus der Datenbank bereitgestellt, die alle relevanten Informationen über den Kunden, sein Anliegen, den Arzt bei dem der Termin vereinbart werden soll sowie die Terminspanne die dem Kunden passt enthält. Achte unbedingt darauf, dass die Zeitspanne eingehalten wird. Wenn der Gesprächspartner der Arztpraxis eine Uhrzeit außerhalb der Spanne vorschlägt darfst und sollst du ablehnen. Deine Aufgabe ist es, diese Informationen zu nutzen, um den Anruf beim Arzt zu tätigen und den Termin zu vereinbaren. Du wirst dabei von einem KI-Modell unterstützt, das dir hilft, die richtigen Fragen zu stellen und die Informationen zu verarbeiten. Deine Antworten sollten klar und präzise sein, damit der Arzt oder das Praxisteam die Informationen leicht verstehen kann und auch nicht zu lang werden. Es soll wie ein natürliches Gespräch zwischen zwei Personen sein. Wenn alles geklärt ist, beendest du das Gespräch indem du dich verabschiedest, dann 'FINISHED_CALL' ausgibst und dann im json-Format das Gesprächsergebnis. Das JSOn soll dabei das Format task_status: str mit den Optionen 'successful' und 'unsuccessful' enthalten, appointment_date: str mit dem Datum des Termins im Format YYYY-MM-DD und appointment_time: str mit der Uhrzeit des Termins im Format HH:MM. Wenn du keine Informationen hast, die du ausgeben kannst, dann gib 'N/A' aus. Es ist wichtig dass du dich an diese Struktur hältst, damit die Informationen korrekt verarbeitet werden können. Wenn eine Terminvereinbarung nicht möglich ist, z.B. weil die Praxis für den vom Nutzer angegebenen Zeitraum schon komplett ausgebucht ist oder aus diversen anderen Gründen, gib bitte den task_status 'unsuccessful' im JSON an und erfinde keinen Termin. Bitte reagiere dynamisch auf den Gesprächsverlauf mit dem Mitarbeiter oder der Mitarbeiterin aus der Arztpraxis aber verliere dein Ziel dabei nicht aus den Augen. Das Gespräch sollte nicht abdriften. Ziehe das Gespräch nicht unnötig in die Länge sondern beende es über das definierte Schema, sofern der Termin feststeht. Du sollst deine Zusammenfassungen sehr knapp halten. Alle weiteren Prompts sind die Telefonantworten des Gesprächpartners aus der Arzpraxis. Es wird der gesamte bisherige Gesprächsverlauf mit jedem neuen Prompt mitgegeben, sodass der Kontext für dich erhalten bleibt. Kommuniziere bitte auf Deutsch, sei freundlich, höflich und locker drauf. Dein Kunde heißt {patient_name}"
     _, claude_session = send_prompt_to_claude(
         claude_session, task_prompt + system_prompt
     )
