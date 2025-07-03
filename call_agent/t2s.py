@@ -1,12 +1,14 @@
 import os
-
 import boto3
 from botocore.exceptions import ClientError
 from pydub import AudioSegment
 from pydub.playback import play
+import warnings
+
+warnings.filterwarnings("ignore", category=UserWarning)
 
 
-def text_to_speech(text, output_file="voice_files/speech.mp3", voice_id="Daniel"):
+def text_to_speech(text, output_file="voice_files/speech.mp3", voice_id="Vicki"):
     try:
         # Ensure directory exists
         os.makedirs(os.path.dirname(output_file), exist_ok=True)
