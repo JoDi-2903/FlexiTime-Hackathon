@@ -25,11 +25,19 @@ FlexiTime provides a comprehensive platform that enables users to book appointme
 
 ### Main Booking Interface
 
+![Screenshot_FlexiTime_1](https://github.com/user-attachments/assets/9d3089b4-878a-46a0-bcfb-574153a506f3)
+
 *Simple and intuitive appointment booking form with doctor selection, reason for visit, and flexible date/time options*
 
 ### User Profile Management
+![Screenshot_FlexiTime_4](https://github.com/user-attachments/assets/e9a137e2-7418-4360-9b5e-2eb5ab12b628)
 
 ### Calendar
+![2Screenshot_FlexiTime_1](https://github.com/user-attachments/assets/80e68e36-23bd-49b1-8b5f-8b0ed2c99093)
+
+## 📞 Demo call with the AI agent
+
+https://github.com/user-attachments/assets/0e06293f-f8d2-4b54-83df-559f6a9af71f
 
 
 ## 🏗️ Technical Architecture
